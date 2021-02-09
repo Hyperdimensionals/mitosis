@@ -9,8 +9,8 @@ import time  # only imported for testing purposes
 class Replicant():
     """"""
     def __init__(self, location_start,
-                 location_end, obj=False, behavior="DIVIDE", parent=False,
-                 scale_start=0, scale_end=mathutils.Vector((1,1,1))):
+                 location_end, obj=False, parent=False,
+                 scale_start=0, scale_end=mathutils.Vector((1, 1, 1))):
         self.parent = parent
         self.assignMotionPath(location_start, location_end)
         self.sides_empty = {'x': True, '-x': True, 'y': True, '-y': True,
@@ -34,7 +34,6 @@ class Replicant():
         """Sets start attributes, before replicant moves to final position"""
         self.setScaleStart()
 
-        self.setVisibilityStart()
         bpy.data.objects[self.obj.name].select_set(True)
         self.setKeyframesStart(frame_current)
 
@@ -43,9 +42,6 @@ class Replicant():
         self.obj.scale[0] = self.scale_start
         self.obj.scale[1] = self.scale_start
         self.obj.scale[2] = self.scale_start
-
-    def setVisibilityStart(self):
-        pass
 
     def assignMotionPath(self, location_start, location_end):
         self.location_start = location_start
@@ -56,27 +52,23 @@ class Replicant():
             data_path="scale", frame=current_frame)
         self.obj.keyframe_insert(
             data_path="location", frame=current_frame)
-        self.obj.keyframe_insert(
-            data_path="hide_render", frame=current_frame)
 
     def setKeyframesEnd(self, current_frame):
         self.obj.keyframe_insert(
             data_path="scale", frame=current_frame)
         self.obj.keyframe_insert(
             data_path="location", frame=current_frame)
-        self.obj.keyframe_insert(
-            data_path="hide_render", frame=current_frame)
 
     def setViewportVisAnimation(
             self, frame_visible, frame_hidden=False):
-        """Add viewport visibility keyframes.
-        Only run this after all other replicant properties are set
-        Object is hidden when fcurve y-value is greater than or equal to 1.
-        Arguments
-        obj -- The blender object to animate
-        frame_visible -- Set frame at which the object will become visible
-        frame_hidden -- Optional argument, frame to hide object again
-                        not currently implemented"""
+        """This method not used with default behavior."""
+        pass
+
+    def setPostBehaviors(self, frame_current):
+        """Adds post replication animation behaviors to replicant"""
+        BehaviorModifier.spin(self.obj, keyframe_start=frame_current,
+                              length=10,
+                              )
         pass
 
 
@@ -85,16 +77,10 @@ class Replicator():
     # Describes the object's replication animation ###
     behaviors = ["DIVIDE", "SEPARATE", "APPEAR", "INFLATE", "DIVIDE_AND_MERGE"]
 
-    def __init__(self, offset=4.0, start_x=0, start_y=0, start_z=0,
-                 frame_start=0, frames_to_spawn=15, scale_start=0,
-                 scale_end=[1, 1, 1], behavior="DIVIDE"):
+    def __init__(self, offset=4.0, frame_start=0, frames_to_spawn=15,
+                 scale_start=0, scale_end=[1, 1, 1],
+                 start_x=0, start_y=0, start_z=0,):
         self.offset = offset
-        if behavior.upper() in Replicator.behaviors:
-            self.spawn_behavior = behavior
-        else:
-            raise ValueError("behavior keyword must be string describing "
-                             " spawn behavior from the following list: " + str(
-                             Replicator.behaviors))
 
         self.replicants = []
         self._replicants_new = []  # stores newly replicated objects
@@ -120,9 +106,16 @@ class Replicator():
             raise TypeError("End scale keyword argument scale_end must be a "
                             "list with 3 numbers")
 
-        location_start = mathutils.Vector((start_x, start_y, start_z))
-        self._addReplicant(
-            location_start=location_start, location_end=location_start)
+        if start_x is False:  # If this is CustomObj_Replicator
+            location_start = self.obj_to_copy.location
+            first_replicant = Replicant(
+                location_start, location_start, parent=self)
+            first_replicant.obj = self.obj_to_copy
+            self.replicants.append(first_replicant)
+        else:
+            location_start = mathutils.Vector((start_x, start_y, start_z))
+            self._addReplicant(
+                location_start=location_start, location_end=location_start)
 
     def nextGeneration(self):
         """Replicates any objects with nearby empty space"""
@@ -135,27 +128,20 @@ class Replicator():
         # self.replicants which would cause a for loop to repeat forever
         while i < num_replicants:
             replicant = self.replicants[i]
-            print(replicant.obj.name)
 
             spawn_location = self.spawn(replicant)
             i += 1
-
         self.frame_current += self.frames_to_spawn
 
         for replicant in self._replicants_new:
-            #replicant.obj.hide_set(False)
-            replicant.obj.hide_render = False
             replicant.obj.scale = self.scale_end
 
             replicant.obj.location = replicant.location_end
 
-            #bpy.data.objects[replicant.obj.name].select_set(True)
-
             replicant.setKeyframesEnd(self.frame_current)
             replicant.setViewportVisAnimation(self.frame_current)
+            #replicant.setPostBehaviors(self.frame_current)
         self._replicants_new.clear()
-
-        #bpy.context.scene.tool_settings.use_keyframe_insert_auto = False
 
     def generate(self, generations=5):
         """Runs Replicator for given number of generations"""
@@ -167,12 +153,11 @@ class Replicator():
     def _addReplicant(self, location_start, location_end=False):
         """Adds a new object"""
         replicant = self.obj_type(location_start=location_start,
-                                  location_end=location_end,
-                                  behavior=self.spawn_behavior, parent=self,
+                                  location_end=location_end, parent=self,
                                   scale_start=self.scale_start)
         replicant.setAttributesStart(self.frame_current)
-
-        #bpy.ops.anim.keyframe_insert_menu(type='Scaling')
+        #replicant.obj.active_material.name = 
+        #replicant.obj.setMaterials()
 
         self.replicants.append(replicant)
         self._replicants_new.append(replicant)
@@ -226,6 +211,20 @@ class Replicator():
     def useActiveObject(self):
         obj_to_replicate = bpy.context.active_object
 
+    def _getBehaviorObject(self, behavior):
+        behavior = behavior.upper()
+        if (behavior in Replicator.behaviors) and (
+                behavior in self.behavior_objs.keys()):
+            return self.behavior_objs[behavior]
+        else:
+            raise ValueError("behavior keyword must be string describing "
+                             "spawn behavior from the following list: " + str(
+                                 self.behavior_objs.keys()))
+
+
+#######
+# GUI #
+#######
 
 class MitosisPanel(bpy.types.Panel):
     """Creates a Panel in the Object properties window"""
@@ -257,15 +256,19 @@ def unregister():
     bpy.utils.unregister_class(MitosisPanel)
 
 
+##########################
+# Behavior Mixin Methods #
+##########################
+
 class DivideMixin():
-    """Replicant Functions for divide behavior
+    """Replicant Methods for divide behavior
     """
     def setAttributesStart(self, frame_current):
         Replicant.setAttributesStart(self, frame_current)
 
 
 class AppearMixin():
-    """Replicant Functions for Appear behavior
+    """Replicant Methods for Appear behavior
     """
     def setScaleStart(self):
         pass
@@ -273,10 +276,6 @@ class AppearMixin():
     def assignMotionPath(self, location_start, location_end):
         self.location_start = location_end
         self.location_end = location_end
-
-    def setVisibilityStart(self):
-        self.obj.hide_render = True
-        #self.obj.hide_viewport = True
 
     def setViewportVisAnimation(
             self, frame_visible, frame_hidden=False):
@@ -294,7 +293,8 @@ class AppearMixin():
 
         coordinate_list = [0, 1, frame_visible, 1, frame_visible + 1, 0]
         num_keyframes = len(coordinate_list) / 2
-        assert ((len(coordinate_list) % 2) is 0), "coordinate_list must contain even number of items."
+        assert ((len(coordinate_list) % 2) is 0
+                ), "coordinate_list must contain even number of items."
 
         fc = act.fcurves.new(data_path='hide_viewport')
         fc.keyframe_points.add(num_keyframes)
@@ -303,6 +303,45 @@ class AppearMixin():
         fc.update()  # Without this, left keyframe tangents/"Bézier handles"
                      # will extend to zero,  warping the shape of the curves 
                      # enough to lead to seemingly unpredictable changes in visibility
+        fc_hide_render = act.fcurves.new(data_path='hide_render')
+        fc_hide_render.keyframe_points.add(num_keyframes)
+        fc_hide_render.keyframe_points.foreach_set('co', coordinate_list)
+
+        fc_hide_render.update()
+
+
+class AppearMixin_MBall(AppearMixin):
+    """Replicant Methods for Appear behavior of MBall
+    """
+    def setKeyframesEnd(self, current_frame):
+        # Additional lines for MBall specifically
+        self.setScaleStart()
+        self.obj.keyframe_insert(
+            data_path="scale", frame=(current_frame - 1))
+        self.obj.scale = self.scale_end
+
+        # original setKeyframesMethod below
+        self.obj.keyframe_insert(
+            data_path="scale", frame=current_frame)
+        self.obj.keyframe_insert(
+            data_path="location", frame=current_frame)
+
+
+class InflateMixin():
+    """Replicant Methods for Inflate behavior.
+    """
+    def setScaleStart(self):
+        """Sets size of replicant before it moves to its final position"""
+        self.obj.scale[0] = 0
+        self.obj.scale[1] = 0
+        self.obj.scale[2] = 0
+
+    def assignMotionPath(self, location_start, location_end):
+        self.location_start = location_end
+        self.location_end = location_end
+
+        self.obj.location = location_end
+
 
 class DivideAndMergeMixin():
     """locationIsEmpty only detects what was empty in previous generation
@@ -315,101 +354,272 @@ class DivideAndMergeMixin():
         return True
 
 
-class MBall_Divide(DivideMixin, Replicant):
+##################################
+# Pre/Post Replication Behaviors #
+##################################
+
+class BehaviorModifier():
+    def __init__(self, keyframe_start, keyframe_end):
+        pass
+
+    def setBehavior(obj, behavior, behavior_func, keyframe_start, length,
+                    delay=False, **kwargs):
+        obj.keyframe_insert(
+            data_path=behavior, frame=keyframe_start)
+        if delay:
+            obj.keyframe_insert(
+                data_path=behavior, frame=(keyframe_start + delay))
+            final_frame = keyframe_start + delay + length
+        else:
+            final_frame = keyframe_start + length
+
+        behavior_func(kwargs)
+
+        obj.keyframe_insert(
+            data_path=behavior, frame=final_frame)
+
+    def spin(obj, keyframe_start, length, delay=False, value=5, axis='X'):
+        obj.keyframe_insert(
+            data_path="rotation_euler", frame=keyframe_start)
+        if delay:
+            obj.keyframe_insert(
+                data_path="rotation_euler", frame=(keyframe_start + delay))
+            final_frame = keyframe_start + delay + length
+        else:
+            final_frame = keyframe_start + length
+
+        bpy.ops.transform.rotate(value=value, orient_axis=axis,
+                                 orient_type='GLOBAL',
+                                 )
+        obj.keyframe_insert(
+            data_path="rotation_euler", frame=final_frame)
+
+
+##############
+# Replicants #
+##############
+
+class MBall(DivideMixin, Replicant):
     """MetaBalls that divide like cells
     """
-    def __init__(self, location_start, location_end, obj="metaball",
-                 parent=False, scale_start=0, scale_end=[1, 1, 1], behavior="DIVIDE"):
-        Replicant.__init__(self, location_start=location_start,
-                           location_end=location_end, obj=obj,
-                           behavior=behavior, parent=parent,
-                           scale_start=scale_start, scale_end=scale_end)
-        replicant = bpy.ops.object.metaball_add(type='ELLIPSOID', radius=2.0,
-                                                enter_editmode=False,
-                                                align='WORLD',
-                                                location=(
-                                                    location_start[0],
-                                                    location_start[1],
-                                                    location_start[2]),
-                                                rotation=(0.0, 0.0, 0.0),)
-        self.obj = bpy.context.active_object
-
-
-class MeshCircle(Replicant):
-    """Mesh Circle
-    """
-    def __init__(self, location_start, location_end, parent=False,
-                 scale_start=0, scale_end=[1, 1, 1], behavior="DIVIDE"):
-        Replicant.__init__(self, location_start=location_start,
-                           location_end=location_end, behavior=behavior,
-                           parent=parent, scale_start=scale_start,
-                           scale_end=scale_end)
-        bpy.ops.mesh.primitive_circle_add(radius=1.0, enter_editmode=False,
-                                          align='WORLD',
-                                          location=(
-                                              location_start[0],
-                                              location_start[1],
-                                              location_start[2]),
-                                          rotation=(0.0, 0.0, 0.0),)
-        self.obj = bpy.context.active_object
-
-
-class MeshSphere(Replicant):
-    """Mesh Circle
-    """
-    def __init__(self, location_start, location_end, parent=False,
-                 scale_start=0, scale_end=[1, 1, 1], behavior="DIVIDE"):
-        Replicant.__init__(self, location_start=location_start,
-                           location_end=location_end, behavior=behavior,
-                           parent=parent, scale_start=scale_start,
-                           scale_end=scale_end)
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, enter_editmode=False,
-                                             align='WORLD',
-                                             location=(
-                                                 location_start[0],
-                                                 location_start[1],
-                                                 location_start[2]),
-                                             rotation=(0.0, 0.0, 0.0),)
-        self.obj = bpy.context.active_object
-
-
-class MeshCube(Replicant):
-    """Mesh Cube Object to Replicate
-    """
-    def __init__(self, location_start, location_end, parent=False,
-                 scale_start=0, scale_end=[1, 1, 1], behavior="DIVIDE"):
-        Replicant.__init__(self, location_start=location_start,
-                           location_end=location_end, behavior=behavior,
-                           parent=parent, scale_start=scale_start,
-                           scale_end=scale_end)
-        bpy.ops.mesh.primitive_cube_add(enter_editmode=False,
-                                        align='WORLD',
-                                        location=(
-                                            location_start[0],
-                                            location_start[1],
-                                            location_start[2]),
-                                        rotation=(0.0, 0.0, 0.0),)
-        self.obj = bpy.context.active_object
-
-
-class MeshCube_Appear(AppearMixin, Replicant):
     def __init__(self, **kwargs):
-        MeshCube.__init__(self, **kwargs)
+        bpy.ops.object.metaball_add(type='ELLIPSOID', radius=2.0,
+                                    enter_editmode=False,
+                                    align='WORLD',
+                                    location=(
+                                        kwargs['location_start'][0],
+                                        kwargs['location_start'][1],
+                                        kwargs['location_start'][2]),
+                                    rotation=(0.0, 0.0, 0.0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class MBall_Appear(AppearMixin_MBall, Replicant):
+    """Mesh Cube Object to Replicate, will appear in final location"""
+    def __init__(self, **kwargs):
+        MBall.__init__(self, **kwargs)
+
+
+class MBall_Inflate(InflateMixin, Replicant):
+    """Mesh Cube Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        MBall.__init__(self, **kwargs)
 
 
 class MBall_DivideAndMerge(DivideAndMergeMixin, Replicant):
     """locationIsEmpty only detects what was empty in previous generation
     Therefore, two objects can go to the same location in a given generation
     """
-    def __init__(self):
-        pass
+    def __init__(self, **kwargs):
+        MBall.__init__(self, **kwargs)
+
+
+class MeshCircle(Replicant):
+    """Mesh Circle
+    """
+    def __init__(self, **kwargs):
+        bpy.ops.mesh.primitive_circle_add(radius=1.0, enter_editmode=False,
+                                          align='WORLD',
+                                          location=(
+                                              kwargs['location_start'][0],
+                                              kwargs['location_start'][1],
+                                              kwargs['location_start'][2]),
+                                          rotation=(0.0, 0.0, 0.0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class MeshSphere(Replicant):
+    """Mesh Circle
+    """
+    def __init__(self, **kwargs):
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, enter_editmode=False,
+                                             align='WORLD',
+                                             location=(
+                                                 kwargs['location_start'][0],
+                                                 kwargs['location_start'][1],
+                                                 kwargs['location_start'][2]),
+                                             rotation=(0.0, 0.0, 0.0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class MeshSphere_Appear(AppearMixin, Replicant):
+    """Mesh Cube Object to Replicate, will appear in final location"""
+    def __init__(self, **kwargs):
+        MeshCube.__init__(self, **kwargs)
+
+
+class MeshSphere_Inflate(InflateMixin, Replicant):
+    """Mesh Cube Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        MeshCube.__init__(self, **kwargs)
+
+
+class IcoSphere(Replicant):
+    """Mesh Ico Sphere
+    """
+    def __init__(self, **kwargs):
+        bpy.ops.mesh.primitive_ico_sphere_add(radius=1.0, enter_editmode=False,
+                                              align='WORLD',
+                                              location=(
+                                                  kwargs['location_start'][0],
+                                                  kwargs['location_start'][1],
+                                                  kwargs['location_start'][2]),
+                                              rotation=(0.0, 0.0, 0.0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class IcoSphere_Appear(AppearMixin, Replicant):
+    """Mesh Ico Sphere Object to Replicate, will appear in final location"""
+    def __init__(self, **kwargs):
+        IcoSphere.__init__(self, **kwargs)
+
+
+class IcoSphere_Inflate(InflateMixin, Replicant):
+    """Mesh Ico Sphere Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        IcoSphere.__init__(self, **kwargs)
+
+
+class Cylinder(Replicant):
+    """Mesh Cylinder
+    """
+    def __init__(self, **kwargs):
+        bpy.ops.mesh.primitive_cylinder_add(radius=1.0, enter_editmode=False,
+                                            align='WORLD',
+                                            location=(
+                                                kwargs['location_start'][0],
+                                                kwargs['location_start'][1],
+                                                kwargs['location_start'][2]),
+                                            rotation=(0.0, 0.0, 0.0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class Cylinder_Appear(AppearMixin, Replicant):
+    """Mesh Cylinder Object to Replicate, will appear in final location"""
+    def __init__(self, **kwargs):
+        Cylinder.__init__(self, **kwargs)
+
+
+class Cylinder_Inflate(InflateMixin, Replicant):
+    """Mesh Cylinder Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        Cylinder.__init__(self, **kwargs)
+
+
+class Cone(Replicant):
+    """Mesh Cone
+    """
+    def __init__(self, **kwargs):
+        bpy.ops.mesh.primitive_cone_add(radius1=1.0, radius2=0,
+                                        enter_editmode=False,
+                                        align='WORLD',
+                                        location=(
+                                            kwargs['location_start'][0],
+                                            kwargs['location_start'][1],
+                                            kwargs['location_start'][2]),
+                                        rotation=(0.0, 0.0, 0.0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class Cone_Appear(AppearMixin, Replicant):
+    """Mesh Cone Object to Replicate, will appear in final location"""
+    def __init__(self, **kwargs):
+        Cone.__init__(self, **kwargs)
+
+
+class Cone_Inflate(InflateMixin, Replicant):
+    """Mesh Cone Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        Cone.__init__(self, **kwargs)
+
+
+class Torus(Replicant):
+    """Torus Cone
+    """
+    def __init__(self, **kwargs):
+        bpy.ops.mesh.primitive_torus_add(major_radius=1.0, minor_radius=.25,
+                                         abso_major_rad=1.25,
+                                         abso_minor_rad=0.75,
+                                         align='WORLD',
+                                         location=(
+                                             kwargs['location_start'][0],
+                                             kwargs['location_start'][1],
+                                             kwargs['location_start'][2]),
+                                         rotation=(0, 0, 0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class Torus_Appear(AppearMixin, Replicant):
+    """Mesh Torus Object to Replicate, will appear in final location"""
+    def __init__(self, **kwargs):
+        Cone.__init__(self, **kwargs)
+
+
+class Torus_Inflate(InflateMixin, Replicant):
+    """Mesh Torus Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        Cone.__init__(self, **kwargs)
+
+
+class MeshCube(Replicant):
+    """Mesh Cone Object to Replicate
+    """
+    def __init__(self, **kwargs):
+        bpy.ops.mesh.primitive_cube_add(enter_editmode=False,
+                                        align='WORLD',
+                                        location=(
+                                            kwargs['location_start'][0],
+                                            kwargs['location_start'][1],
+                                            kwargs['location_start'][2]),
+                                        rotation=(0.0, 0.0, 0.0),)
+        self.obj = bpy.context.active_object
+        Replicant.__init__(self, **kwargs)
+
+
+class MeshCube_Appear(AppearMixin, Replicant):
+    """Mesh Cube Object to Replicate, will appear in final location"""
+    def __init__(self, **kwargs):
+        MeshCube.__init__(self, **kwargs)
+
+
+class MeshCube_Inflate(InflateMixin, Replicant):
+    """Mesh Cube Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        MeshCube.__init__(self, **kwargs)
 
 
 class Custom(Replicant):
     """Mesh Circle
     """
     def __init__(self, location_start, location_end, parent=False,
-                 scale_start=0, scale_end=False, behavior="DIVIDE"):
+                 scale_start=0, scale_end=False):
         try:
             self.obj = parent.obj_to_copy.copy()
         except AttributeError as e:
@@ -426,79 +636,162 @@ class Custom(Replicant):
 
         C.collection.objects.link(self.obj)
         self.obj.location = location_start
-
         if scale_end is False:
-            print("SCALE WAS FALSE")
             scale_end = parent.obj_to_copy.scale
-            print(scale_end)
 
         Replicant.__init__(self, location_start=location_start,
-                           location_end=location_end, behavior=behavior,
+                           location_end=location_end,
                            parent=parent, scale_start=scale_start,
                            scale_end=scale_end)
 
 
+class Custom_Appear(AppearMixin, Replicant):
+    """Custom Object to Replicate, will appear out of thin air"""
+    def __init__(self, **kwargs):
+        Custom.__init__(self, **kwargs)
+
+
+class Custom_Inflate(InflateMixin, Replicant):
+    """Custom Object to Replicate, will inflate in place"""
+    def __init__(self, **kwargs):
+        Custom.__init__(self, **kwargs)
+
+
+###############
+# Replicators #
+###############
+
 class MBall_Replicator(Replicator):
+    behavior_objs = {
+        "DIVIDE": MBall, "APPEAR": MBall_Appear,
+        "INFLATE": MBall_Inflate, "DIVIDE_AND_MERGE": MBall_DivideAndMerge}
+
     def __init__(self, offset=4.0, start_x=0, start_y=0, start_z=0,
                  frame_start=0, frames_to_spawn=15, scale_start=0,
                  scale_end=[1, 1, 1], behavior="DIVIDE"):
-        self.obj_type = MBall_Divide
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
         Replicator.__init__(self, offset=offset, start_x=start_x,
                             start_y=start_y, start_z=start_z,
                             frame_start=frame_start,
                             frames_to_spawn=frames_to_spawn,
-                            scale_start=scale_start, scale_end=scale_end,
-                            behavior=behavior)
+                            scale_start=scale_start, scale_end=scale_end,)
 
 
 class MeshCircle_Replicator(Replicator):
     def __init__(self, offset=4.0, start_x=0, start_y=0, start_z=0,
                  frame_start=0, frames_to_spawn=15, scale_start=.2,
                  scale_end=[1, 1, 1], behavior="DIVIDE"):
-        self.obj_type = MeshCircle
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
         Replicator.__init__(self, offset=offset, start_x=start_x,
                             start_y=start_y, start_z=start_z,
                             frame_start=frame_start, scale_end=scale_end,
-                            frames_to_spawn=frames_to_spawn, behavior=behavior)
+                            frames_to_spawn=frames_to_spawn)
 
 
 class MeshSphere_Replicator(Replicator):
-    def __init__(self, offset=4.0, start_x=0, start_y=0, start_z=0,
-                 frame_start=0, frames_to_spawn=15, scale_start=.2,
-                 scale_end=[1, 1, 1], behavior="DIVIDE"):
-        self.obj_type = MeshSphere
-        Replicator.__init__(self, offset=offset, start_x=start_x,
-                            start_y=start_y, start_z=start_z,
-                            frame_start=frame_start, scale_end=scale_end,
-                            frames_to_spawn=frames_to_spawn, behavior=behavior)
+    behavior_objs = {
+        "DIVIDE": MeshSphere, "APPEAR": MeshSphere_Appear,
+        "INFLATE": MeshSphere_Inflate}
 
-
-class MeshCube_Replicator(Replicator):
     def __init__(self, offset=4.0, start_x=0, start_y=0, start_z=0,
                  frame_start=0, frames_to_spawn=15, scale_start=.2,
                  scale_end=[1, 1, 1], behavior="DIVIDE"):
         # Assign Behavior #
-        if behavior == "APPEAR":
-            self.obj_type = MeshCube_Appear
-        else:
-            self.obj_type = MeshCube
+        self.obj_type = self._getBehaviorObject(behavior)
         Replicator.__init__(self, offset=offset, start_x=start_x,
                             start_y=start_y, start_z=start_z,
                             frame_start=frame_start, scale_end=scale_end,
-                            frames_to_spawn=frames_to_spawn, behavior=behavior)
+                            frames_to_spawn=frames_to_spawn)
+
+
+class IcoSphere_Replicator(Replicator):
+    behavior_objs = {
+        "DIVIDE": IcoSphere, "APPEAR": IcoSphere_Appear,
+        "INFLATE": IcoSphere_Inflate}
+
+    def __init__(self, behavior="DIVIDE", **kwargs):
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
+        Replicator.__init__(self, **kwargs)
+
+
+class Cylinder_Replicator(Replicator):
+    behavior_objs = {
+        "DIVIDE": Cylinder, "APPEAR": Cylinder_Appear,
+        "INFLATE": Cylinder_Inflate}
+
+    def __init__(self, behavior="DIVIDE", **kwargs):
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
+        Replicator.__init__(self, **kwargs)
+
+
+class Cone_Replicator(Replicator):
+    behavior_objs = {
+        "DIVIDE": Cone, "APPEAR": Cone_Appear,
+        "INFLATE": Cone_Inflate}
+
+    def __init__(self, behavior="DIVIDE", **kwargs):
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
+        Replicator.__init__(self, **kwargs)
+
+
+class Torus_Replicator(Replicator):
+    behavior_objs = {
+        "DIVIDE": Torus, "APPEAR": Torus_Appear,
+        "INFLATE": Torus_Inflate}
+
+    def __init__(self, behavior="DIVIDE", **kwargs):
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
+        Replicator.__init__(self, **kwargs)
+
+
+class MeshCube_Replicator(Replicator):
+    behavior_objs = {
+        "DIVIDE": MeshCube, "APPEAR": MeshCube_Appear,
+        "INFLATE": MeshCube_Inflate}
+
+    def __init__(self, behavior="DIVIDE", **kwargs):
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
+        Replicator.__init__(self, **kwargs)
 
 
 class CustomObj_Replicator(Replicator):
-    def __init__(self, offset=4.0, start_x=0, start_y=0, start_z=0,
+    behavior_objs = {
+        "DIVIDE": Custom, "APPEAR": Custom_Appear,
+        "INFLATE": Custom_Inflate}
+
+    def __init__(self, behavior="DIVIDE", offset=4.0,
+                 start_x=False, start_y=False, start_z=False,
                  frame_start=0, frames_to_spawn=15, scale_start=.2,
-                 scale_end=[1, 1, 1], behavior="DIVIDE"):
-        self.obj_type = Custom
-        self.obj_to_copy = bpy.context.active_object
+                 scale_end=[1, 1, 1]):
+        # Assign Behavior #
+        self.obj_type = self._getBehaviorObject(behavior)
+        active_obj = bpy.context.active_object
+        if active_obj is None:
+            raise ValueError("For Custom Object Replicators, a blender object "
+                             "must be selected. bpy.context.active_object must"
+                             " not be None.")
+        self.obj_to_copy = CustomObj_Replicator.copyActiveObject(active_obj)
         scale_end = self.obj_to_copy.scale
         Replicator.__init__(self, offset=offset, start_x=start_x,
                             start_y=start_y, start_z=start_z,
                             frame_start=frame_start, scale_end=scale_end,
-                            frames_to_spawn=frames_to_spawn, behavior=behavior)
+                            frames_to_spawn=frames_to_spawn)
+
+    def copyActiveObject(active_obj):
+        C = bpy.context
+        new_obj = active_obj.copy()
+        new_obj.data = active_obj.data.copy()
+        new_obj.animation_data_clear()
+        C.collection.objects.link(new_obj)
+
+        return new_obj
 
 
 # TO do - way to select a frame then add a generation that ends at that frame
@@ -507,7 +800,14 @@ if __name__ == "__main__":
     time_start = time.time()
 
     #register()
-    replicator1 = MeshCube_Replicator(offset=4, frames_to_spawn=10, scale_start=0, behavior="APPEAR")
+    replicator1 = CustomObj_Replicator(behavior="DIVIDE",
+        offset=4, frames_to_spawn=10, scale_start=0)
     replicator1.generate(6)
+
+    replicator2 = Torus_Replicator(
+        offset=4, frames_to_spawn=10, scale_start=0, behavior="DIVIDE",
+        start_x=10)
+    replicator2.generate(6)
+
 
     print("Script duration: %.4f sec" % (time.time() - time_start))
