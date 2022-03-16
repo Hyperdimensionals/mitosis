@@ -436,6 +436,10 @@ class DivideAndMergeMixin():
 ##################################
 
 class BehaviorModifiers():
+    """Class for adding behaviors beyond simple replication
+    """
+    mods = ["ROTATE", "MOVE", "CHANGE SCALE"]
+
     def __init__(self, keyframe_start, keyframe_end):
         pass
 
@@ -646,13 +650,15 @@ class MitosisPanel(bpy.types.Panel):
         obj = context.object
 
         row = layout.row()
-        #row.prop(context.scene, "generations")
+        #row.prop(bpy.ops.object.mitosis, "offset")
 
         row = layout.row()
         row.prop(context.scene, "generations")
 
         row = layout.row()
+        row.menu(MitosisAddon.bl_idname)
         row.operator("object.mitosis")
+        row.operator("object.mitosis_drawtest")
 
 
 class MitosisAddon(bpy.types.Operator):
@@ -664,6 +670,7 @@ class MitosisAddon(bpy.types.Operator):
     # Consider whether it's better to have below propertyies here,
     # or directly register them with the Scene in register() function
     # registering them with Scene means values will be saved
+    # to better understand: https://docs.blender.org/api/current/info_overview.html
 
     generations : bpy.props.IntProperty(
         name="Generations",
@@ -683,30 +690,30 @@ class MitosisAddon(bpy.types.Operator):
         min=0, default=15
     )
 
-    use_x : bpy.props.BoolProperty(
+    use_x: bpy.props.BoolProperty(
         name="Spawn in X Axis", default=True,
         description="Replicants will spawn in the X Axis direction")
-    use_y : bpy.props.BoolProperty(
+    use_y: bpy.props.BoolProperty(
         name="Spawn in Y Axis", default=True,
         description="Replicants will spawn in the Y Axis direction")
-    use_z : bpy.props.BoolProperty(
+    use_z: bpy.props.BoolProperty(
         name="Spawn in Z Axis", default=True,
         description="Replicants will spawn in the Z Axis direction")
 
-    scale_start : bpy.props.FloatVectorProperty(
+    scale_start: bpy.props.FloatVectorProperty(
         name="Starting Scale",
         #options='HIDDEN',
         description="Size of each spawn upon start of animation",
         min=0.0, default=[0.2, 0.2, 0.2]
     )
 
-    scale_end : bpy.props.FloatVectorProperty(
+    scale_end: bpy.props.FloatVectorProperty(
         name="End Scale",
         description="Size of each spawn at end of animation",
         min=0.0, default=[1.0, 1.0, 1.0]
     )
 
-    use_target_scale : bpy.props.BoolProperty(
+    use_target_scale: bpy.props.BoolProperty(
         name="Use Target Object Scale",
         description="Spawned objects will be the same size as target object")
 
@@ -715,11 +722,24 @@ class MitosisAddon(bpy.types.Operator):
         behavior_strings.append((b, b.capitalize(), ""))
     behavior_strings = tuple(behavior_strings)
 
-    behavior : bpy.props.EnumProperty(
+    behavior: bpy.props.EnumProperty(
         name="Behavior",
         description="Determines the animation of the replication",
         items=behavior_strings,
         default='DIVIDE')
+
+    modifier_strings = []
+    for b in BehaviorModifiers.mods:
+        modifier_strings.append((b, b.capitalize(), ""))
+    modifier_strings = tuple(modifier_strings)
+
+    modifier: bpy.props.EnumProperty(
+        name="Behavior Modifiers",
+        description="Set pre or post replication behaviors",
+        items=modifier_strings,
+        default='ROTATE',
+        #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
+        )
 
     def invoke(self, context, event):
         wm = context.window_manager
@@ -736,11 +756,155 @@ class MitosisAddon(bpy.types.Operator):
 
         return{'FINISHED'}
 
-    #def draw(self, context):
-    #    pass
+class MitosisAddonDrawtest(bpy.types.Operator):
+    """Object Replication Animation"""
+    bl_idname = "object.mitosis_drawtest"
+    bl_label = "Mitosis Drawtest"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # Consider whether it's better to have below propertyies here,
+    # or directly register them with the Scene in register() function
+    # registering them with Scene means values will be saved
+    # to better understand: https://docs.blender.org/api/current/info_overview.html
+
+    generations : bpy.props.IntProperty(
+        name="Generations",
+        description="Number of times replicants will divide",
+        default=1, min=1
+    )
+
+    offset : bpy.props.FloatProperty(
+        name="Spawn Offset",
+        description="End distance between replicated objects ",
+        min=0.0, default=4.0
+    )
+
+    frames_to_spawn : bpy.props.IntProperty(
+        name="Frames to Spawn",
+        description="Number of keyframes of each spawn animation",
+        min=0, default=15
+    )
+
+    use_x: bpy.props.BoolProperty(
+        name="Spawn in X Axis", default=True,
+        description="Replicants will spawn in the X Axis direction")
+    use_y: bpy.props.BoolProperty(
+        name="Spawn in Y Axis", default=True,
+        description="Replicants will spawn in the Y Axis direction")
+    use_z: bpy.props.BoolProperty(
+        name="Spawn in Z Axis", default=True,
+        description="Replicants will spawn in the Z Axis direction")
+
+    scale_start: bpy.props.FloatVectorProperty(
+        name="Starting Scale",
+        #options='HIDDEN',
+        description="Size of each spawn upon start of animation",
+        min=0.0, default=[0.2, 0.2, 0.2]
+    )
+
+    scale_end: bpy.props.FloatVectorProperty(
+        name="End Scale",
+        description="Size of each spawn at end of animation",
+        min=0.0, default=[1.0, 1.0, 1.0]
+    )
+
+    use_target_scale: bpy.props.BoolProperty(
+        name="Use Target Object Scale",
+        description="Spawned objects will be the same size as target object")
+
+    behavior_strings = []
+    for b in CustomObj_Replicator.behavior_objs.keys():
+        behavior_strings.append((b, b.capitalize(), ""))
+    behavior_strings = tuple(behavior_strings)
+
+    behavior: bpy.props.EnumProperty(
+        name="Behavior",
+        description="Determines the animation of the replication",
+        items=behavior_strings,
+        default='DIVIDE')
+
+    modifier_strings = []
+    for b in BehaviorModifiers.mods:
+        modifier_strings.append((b, b.capitalize(), ""))
+    modifier_strings = tuple(modifier_strings)
+
+    modifier: bpy.props.EnumProperty(
+        name="Behavior Modifiers",
+        description="Set pre or post replication behaviors",
+        items=modifier_strings,
+        default='ROTATE',
+        #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
+        )
+
+    def draw(self, context):
+        layout = self.layout
+
+        col=layout.column()
+        col.label(text="asdf")
+        row = col.row()
+        row.prop(self, "generations")
+
+        row = layout.row()
+        row.prop(self, "offset")
+
+        row = layout.row()
+        row.prop(self, "frames_to_spawn")
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+
+    def execute(self, context):
+        end_scale = self.scale_end if self.use_target_scale is False else False
+        custom_replicator = CustomObj_Replicator(
+            behavior=self.behavior, offset=self.offset,
+            frames_to_spawn=self.frames_to_spawn,
+            scale_start=self.scale_start, scale_end=end_scale,
+            use_x=self.use_x, use_y=self.use_y, use_z=self.use_z)
+        custom_replicator.generate(self.generations)
+
+        return{'FINISHED'}
+
 
 def menu_func(self, context):
     self.layout.operator(MitosisAddon.bl_idname)
+
+class BehaviorModMenu(bpy.types.Operator):
+    bl_idname = "object.behaviormod"
+    bl_label = "Add a behavior modifier to the spawn animations"
+
+    my_float: bpy.props.FloatProperty(name="Some Floating Point")
+    my_bool: bpy.props.BoolProperty(name="Toggle Option")
+    my_string: bpy.props.StringProperty(name="String Value")
+
+    layout.operator_context = "INVOKE_DEFAULT"
+    def execute(self, context):
+        message = (
+            "Popup Values: %f, %d, '%s'" %
+            (self.my_float, self.my_bool, self.my_string)
+        )
+        self.report({'INFO'}, message)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+
+def mod_menu_func(self, context):
+    self.layout.operator_context = 'INVOKE_DEFAULT'
+    self.layout.operator(BehaviorModMenu.bl_idname, text="Behavior Modifier")
+
+    #def draw(self, context):
+    #    pass
+
+
+def add_panel_func(self, context):
+    """Add to current panel"""
+    layout = self.layout
+
+    row = layout.row(align=True)
+    row.prop(context.scene, "generations")
+    row.prop(bpy.types.object.behaviormod, "my_float")
 
 
 def register():
@@ -754,16 +918,24 @@ def register():
         description="Number of times object will divide",
         min=1
     )
+    #bpy.utils.register_class(bpy.types.Scene.generations)
     bpy.utils.register_class(MitosisPanel)
     bpy.utils.register_class(MitosisAddon)
+    bpy.utils.register_class(MitosisAddonDrawtest)
+    bpy.utils.register_class(BehaviorModMenu)
 
+    print("Panels: {0}".format(bpy.types.Panel))
+    bpy.types.OBJECT_PT_mitosis.append(add_panel_func)
     bpy.types.VIEW3D_MT_object.append(menu_func)
+
 
 
 def unregister():
     bpy.utils.unregister_class(MitosisPanel)
     del bpy.types.Scene.string_prop_1
     bpy.utils.unregister_class(MitosisAddon)
+    bpy.utils.unregister_class(MitosisAddonDrawtest)
+    bpy.utils.unregister_class(BehaviorModMenu)
 
     bpy.types.VIEW3D_MT_object.remove(menu_func)
 
