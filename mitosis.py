@@ -1,5 +1,11 @@
+bl_info = {
+    "name": "Mitosis",
+    "blender": (3, 1, 0),
+    "category": "Object",
+}
+
 import bpy
-import bpy_types
+#import bpy_types
 from math import radians
 import mathutils
 
@@ -557,6 +563,7 @@ class Custom(Replicant):
                  scale_start=0, scale_end=False):
         try:
             self.obj = parent.obj_to_copy.copy()
+            # MAKE objects as LINKED DUPLICATES AN OPTION SO ALL REPLICANT OBJECTS ARE CHANGED WHEN EDITED
         except AttributeError as e:
             raise AttributeError("Parent Replicator must have obj_to_copy "
                                  "attribute for Custom Replicants. Original "
@@ -636,42 +643,48 @@ class CustomObj_Replicator(Replicator):
 # GUI #
 #######
 
-class MitosisPanel(bpy.types.Panel):
-    """Creates a Panel in the Object properties window"""
+class OBJECT_PT_MitosisPanel(bpy.types.Panel):
+    """Creates a Panel in the Object properties window
+    This is used if I make MitosisAddon a bpy.types.Operator
+    """
     bl_label = "Mitosis Animation"
     bl_idname = "OBJECT_PT_mitosis"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
+    bpy.types.Scene.mod_title = bpy.props.StringProperty(
+        name="Behavior Modifiers",
+        description="My description",
+    )  # assigned w/ row.prop(context.scene, "mod_title")
     def draw(self, context):
         layout = self.layout
 
-        obj = context.object
+        # Access properties that are stored via addon keymaps
+        # This is done in register() function
+        wm = bpy.context.window_manager
+        km = wm.keyconfigs.addon.keymaps['Object Mode']
+        mitosis_props = km.keymap_items[0].properties
+        mitosis_props = context.scene.mitosis_props
 
+        for prop in mitosis_props.__annotations__.keys():
+            # __annotations__ used at suggestion of
+            # https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
+            row = layout.row()
+            if prop == "modifier":
+                row.label(text="Behavior Modifiers")
+                row = layout.row()
+                col = layout.column()
+                col.prop(mitosis_props, prop, icon_only=True)
+            else:
+                row.prop(mitosis_props, prop)
         row = layout.row()
-        #row.prop(bpy.ops.object.mitosis, "offset")
-
-        row = layout.row()
-        row.prop(context.scene, "generations")
-
-        row = layout.row()
-        row.menu(MitosisAddon.bl_idname)
-        row.operator("object.mitosis")
-        row.operator("object.mitosis_drawtest")
+        row.operator("object.mitosis", text="Execute")
 
 
-class MitosisAddon(bpy.types.Operator):
-    """Object Replication Animation"""
-    bl_idname = "object.mitosis"
-    bl_label = "Mitosis"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    # Consider whether it's better to have below propertyies here,
-    # or directly register them with the Scene in register() function
-    # registering them with Scene means values will be saved
-    # to better understand: https://docs.blender.org/api/current/info_overview.html
-
+class MitosisProperties(bpy.types.PropertyGroup):
+    """User defined variables for mitosis animations.
+    """
     generations : bpy.props.IntProperty(
         name="Generations",
         description="Number of times replicants will divide",
@@ -728,6 +741,7 @@ class MitosisAddon(bpy.types.Operator):
         items=behavior_strings,
         default='DIVIDE')
 
+    # Behavior Modifiers #
     modifier_strings = []
     for b in BehaviorModifiers.mods:
         modifier_strings.append((b, b.capitalize(), ""))
@@ -741,24 +755,43 @@ class MitosisAddon(bpy.types.Operator):
         #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
         )
 
+class OBJECT_OT_MitosisAddon(bpy.types.Operator):
+    """Object Replication Animation"""
+    bl_idname = "object.mitosis"
+    bl_label = "Mitosis"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # Consider whether it's better to have below propertyies here,
+    # or directly register them with the Scene in register() function
+    # registering them with Scene means values will be saved
+    # to better understand: https://docs.blender.org/api/current/info_overview.html
+
     def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self)
+        # wm = context.window_manager
+        # return wm.invoke_props_dialog(self)
+        # /\ Makes props dialog box open
+        print("EVENT: {0}".format(event))
+        return self.execute(context)
 
     def execute(self, context):
-        end_scale = self.scale_end if self.use_target_scale is False else False
-        custom_replicator = CustomObj_Replicator(
-            behavior=self.behavior, offset=self.offset,
-            frames_to_spawn=self.frames_to_spawn,
-            scale_start=self.scale_start, scale_end=end_scale,
-            use_x=self.use_x, use_y=self.use_y, use_z=self.use_z)
-        custom_replicator.generate(self.generations)
-
+        execute_func(self, context)
         return{'FINISHED'}
 
-class MitosisAddonDrawtest(bpy.types.Operator):
+def execute_func(self, context):
+    # MIGHT WANT TO PASS context arg TO REPLICATOR INSTEAD OF USING BPY.CONTEXT IN ALL THE CODE ABOVE
+    # SINCE SOME CODE MAY PASS CUSTOM CONTEXT TO OPERATORS
+    end_scale = context.scene.mitosis_props.scale_end if context.scene.mitosis_props.use_target_scale is False else False
+    custom_replicator = CustomObj_Replicator(
+        behavior=context.scene.mitosis_props.behavior, offset=context.scene.mitosis_props.offset,
+        frames_to_spawn=context.scene.mitosis_props.frames_to_spawn,
+        scale_start=context.scene.mitosis_props.scale_start, scale_end=end_scale,
+        use_x=context.scene.mitosis_props.use_x, use_y=context.scene.mitosis_props.use_y, use_z=context.scene.mitosis_props.use_z)
+    custom_replicator.generate(context.scene.mitosis_props.generations)
+
+
+class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
     """Object Replication Animation"""
-    bl_idname = "object.mitosis_drawtest"
+    bl_idname = "object.drawtest"
     bl_label = "Mitosis Drawtest"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -867,28 +900,26 @@ class MitosisAddonDrawtest(bpy.types.Operator):
 
 
 def menu_func(self, context):
-    self.layout.operator(MitosisAddon.bl_idname)
+    self.layout.operator(OBJECT_OT_MitosisAddon.bl_idname)
 
-class BehaviorModMenu(bpy.types.Operator):
-    bl_idname = "object.behaviormod"
+class OBJECT_PT_BehaviorModPanel(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_behavior_mods"
     bl_label = "Add a behavior modifier to the spawn animations"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
 
-    my_float: bpy.props.FloatProperty(name="Some Floating Point")
-    my_bool: bpy.props.BoolProperty(name="Toggle Option")
-    my_string: bpy.props.StringProperty(name="String Value")
+    def draw(self, context):
+        layout = self.layout
 
-    layout.operator_context = "INVOKE_DEFAULT"
-    def execute(self, context):
-        message = (
-            "Popup Values: %f, %d, '%s'" %
-            (self.my_float, self.my_bool, self.my_string)
-        )
-        self.report({'INFO'}, message)
-        return {'FINISHED'}
+        # Access properties that are stored via addon keymaps
+        # This is done in register() function
+        wm = bpy.context.window_manager
+        km = wm.keyconfigs.addon.keymaps['Object Mode']
+        mitosis_props = context.scene.mitosis_props
 
-    def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self)
+        row = layout.row()
+        row.operator("object.mitosis", text="Execute")
 
 def mod_menu_func(self, context):
     self.layout.operator_context = 'INVOKE_DEFAULT'
@@ -899,45 +930,61 @@ def mod_menu_func(self, context):
 
 
 def add_panel_func(self, context):
+    """Appends to a panel"""
     """Add to current panel"""
     layout = self.layout
 
     row = layout.row(align=True)
     row.prop(context.scene, "generations")
-    row.prop(bpy.types.object.behaviormod, "my_float")
+    #row.prop(bpy.types.object.behaviormod, "my_float")
 
+# store keymaps here to access after registration
+addon_keymaps = []
 
 def register():
-    bpy.types.Scene.string_prop_1 = bpy.props.StringProperty(
-        name="String",
-        description="My description",
-        default="default"
-    )
     bpy.types.Scene.generations = bpy.props.IntProperty(
         name="Generations",
         description="Number of times object will divide",
         min=1
     )
-    #bpy.utils.register_class(bpy.types.Scene.generations)
-    bpy.utils.register_class(MitosisPanel)
-    bpy.utils.register_class(MitosisAddon)
-    bpy.utils.register_class(MitosisAddonDrawtest)
-    bpy.utils.register_class(BehaviorModMenu)
+
+    bpy.types.Scene.offset = bpy.props.FloatProperty(
+        name="Spawn Offset",
+        description="End distance between replicated objects ",
+        min=0.0, default=4.0
+    )
+
+    # Custom Keymaps
+    # object.mitosis Operator w/ the addon's properties is stored here
+    # because properties won't be editable in panel UI if not
+    # (they'd only be editable in popup)
+    wm = bpy.context.window_manager
+    km = wm.keyconfigs.addon.keymaps.new(name='Object Mode', space_type='EMPTY')
+    kmi = bpy.context.window_manager.keyconfigs.addon.keymaps['Object Mode'].keymap_items.new(
+        "object.mitosis", "NONE", "ANY")
+    addon_keymaps.append((km, kmi))
+
+    bpy.utils.register_class(MitosisProperties)
+    bpy.types.Scene.mitosis_props = bpy.props.PointerProperty(type=MitosisProperties)
+
+    bpy.utils.register_class(OBJECT_PT_MitosisPanel)
+    bpy.utils.register_class(OBJECT_OT_MitosisAddon)
+    bpy.utils.register_class(OBJECT_OT_BehaviorModOp)
 
     print("Panels: {0}".format(bpy.types.Panel))
-    bpy.types.OBJECT_PT_mitosis.append(add_panel_func)
+    #bpy.types.OBJECT_PT_mitosis.append(add_panel_func)
     bpy.types.VIEW3D_MT_object.append(menu_func)
 
 
-
 def unregister():
-    bpy.utils.unregister_class(MitosisPanel)
-    del bpy.types.Scene.string_prop_1
-    bpy.utils.unregister_class(MitosisAddon)
-    bpy.utils.unregister_class(MitosisAddonDrawtest)
-    bpy.utils.unregister_class(BehaviorModMenu)
-
     bpy.types.VIEW3D_MT_object.remove(menu_func)
+
+    bpy.utils.unregister_class(OBJECT_OT_BehaviorModOp)
+    bpy.utils.unregister_class(OBJECT_OT_MitosisAddon)
+    bpy.utils.unregister_class(OBJECT_PT_MitosisPanel)
+    bpy.utils.unregister_class(MitosisProperties)
+
+    del bpy.types.Scene.string_prop_1
 
 
 # TO do - way to select a frame then add a generation that ends at that frame
