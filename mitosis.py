@@ -131,7 +131,7 @@ class Replicant():
 
         fc_hide_render.update()
 
-    def setPostBehaviors(self, behaviors, frame_current):
+    def setBehaviorMods(self, behaviors, frame_current):
         """Adds post replication animation behaviors to replicant"""
         for behavior in behaviors:
             BehaviorModifiers.setBehavior(
@@ -182,7 +182,7 @@ class Replicator():
         self.use_y = use_y
         self.use_z = use_z
 
-        self.post_behaviors = []
+        self.behavior_mods = []
 
         self.scale_start = scaleTypeCheck(scale_start)
         self.scale_end = scaleTypeCheck(scale_end)
@@ -226,7 +226,7 @@ class Replicator():
             replicant.obj.location = replicant.location_end
 
             replicant.setKeyframesEnd(self.frame_current)
-            replicant.setPostBehaviors(self.post_behaviors, self.frame_current)
+            replicant.setBehaviorMods(self.behavior_mods, self.frame_current)
         self._replicants_new.clear()
 
     def generate(self, generations=5):
@@ -298,7 +298,7 @@ class Replicator():
     def useActiveObject(self):
         obj_to_replicate = bpy.context.active_object
 
-    def addPostBehavior(
+    def addBehaviorMod(
             self, behavior):
         """Creates a behavior each replicant will perform after replicating
         Arguments:
@@ -309,15 +309,15 @@ class Replicator():
         value -- value of change, default used if none given
         index -- index of property, default used if none given"""
         assert isinstance(
-            behavior, dict), "Argument must be a dict"
-        self._postBehaviorInputCheck(  # Doesn't check everything yet
+            behavior, dict), "Argument must be a dict of behavior settings"
+        self._behaviorModInputCheck(  # Doesn't check everything yet
             behavior)
 
-        self.post_behaviors.append(
+        self.behavior_mods.append(
             behavior)
 
-    def addPostBehaviors(self, *behaviors):
-        """Accepts any number of dicts containing post-behavior instructions
+    def addBehaviorMods(self, behaviors):
+        """Accepts any number of dicts containing behavior modifying instructions
         Each dict should contain these keys:
         behavior -- String of data_path of object property
         length -- number of keyframes to execute animation
@@ -325,12 +325,16 @@ class Replicator():
         value -- value of change, default used if none
         index -- index of property, default used if none"""
 
+        # self.behavior_mods is cleared, Behavior Nod settings are stored in
+        # Blender PropertyCollection (See UI section of code)
+        self.behavior_mods = []
+
         for behavior in behaviors:
             try:
                 assert isinstance(
                     behavior, dict), "Every item in behavior list must be "
-                "a dictionary."
-                self.addPostBehavior(behavior)
+                "a dictionary, instead received a {0}".format(type(behavior))
+                self.addBehaviorMod(behavior)
             except KeyError as E:
                 raise ValueError("The dictionary that is index {} "
                                  "in the given behavior list is missing"
@@ -338,8 +342,8 @@ class Replicator():
                                      behaviors.index(behavior), E)
                                  )
 
-    def _postBehaviorInputCheck(self, behavior_dict):
-        """Checks inputs of addPostBehavior and addPostBehaviors methods"""
+    def _behaviorModInputCheck(self, behavior_dict):
+        """Checks inputs of addBehaviorMod and addBehaviorMods methods"""
         # Eventually check all keys/values of behavior dict here
         assert isinstance(
             behavior_dict['data_path'], str), "data_path value must be string "
@@ -444,13 +448,16 @@ class DivideAndMergeMixin():
 class BehaviorModifiers():
     """Class for adding behaviors beyond simple replication
     """
-    mods = ["ROTATE", "MOVE", "CHANGE SCALE"]
+    # Key is behavior description string, value is blender data_path
+    # for behavior
+    mods = {"ROTATE": 'rotation_euler', "MOVE": 'delta_location',
+            "CHANGE SCALE": 'delta_scale'}
 
     def __init__(self, keyframe_start, keyframe_end):
         pass
 
-    def setBehavior(blender_obj, keyframe_start, data_path, length,
-                    delay=False, value=5, index=0):
+    def setBehavior(blender_obj, data_path, length,
+                    delay=False, value=5, index=0, keyframe_start=None):
         """Generalized func to animate specified obj property via fcurves
         Arguments
         obj -- blender object to animate
@@ -471,7 +478,10 @@ class BehaviorModifiers():
             #bpy.data.actions.new('Modifier Action')
 
         ac = blender_obj.animation_data.action
-        fc = ac.fcurves.new(data_path=data_path, index=index)
+        if ac.fcurves.find(data_path=data_path) is None:
+            fc = ac.fcurves.new(data_path=data_path, index=index)
+        else:
+            fc = ac.fcurves.find(data_path=data_path, index=index)
 
         # Find current value of data_path at start frame
         bpy.context.scene.frame_current = keyframe_start
@@ -482,9 +492,9 @@ class BehaviorModifiers():
             'co', [keyframe_start, current_value, final_frame, value])
         fc.update()
 
-    def rotate(blender_obj, keyframe_start, length,
+    def rotate(blender_obj, length,
                delay=False, amount=5, axis='x',
-               index=None, value=None):
+               index=None, value=None, keyframe_start=None):
         """Sets euler rotation with setBehavior(). 'axis' arg becomes index"""
         index = index if index else BehaviorModifiers._axisToIndex(axis)
         value = value if value else amount
@@ -492,8 +502,8 @@ class BehaviorModifiers():
             blender_obj, keyframe_start, data_path='rotation_euler',
             length=length, delay=delay, value=value, index=index)
 
-    def move(blender_obj, keyframe_start, length, delay=False,
-             amount=0, axis='x', index=None, value=None):
+    def move(blender_obj, length, delay=False,
+             amount=0, axis='x', index=None, value=None, keyframe_start=None):
         """Sets change in location as x,y,z coordinate, with setBehavior()
         Arguments:
         value -- number representing amount of change
@@ -505,8 +515,8 @@ class BehaviorModifiers():
             blender_obj, keyframe_start, length=length,
             data_path="delta_location", delay=delay, value=value, index=index)
 
-    def change_scale(blender_obj, keyframe_start, length, delay=False,
-                     amount=0, axis='x', index=None, value=None):
+    def change_scale(blender_obj, length, delay=False,
+                     amount=0, axis='x', index=None, value=None, keyframe_start=None):
         """Sets change in scale in x,y, or z coordinate, with setBehavior()
         Arguments:
         value -- number representing amount of change
@@ -660,11 +670,7 @@ class OBJECT_PT_MitosisPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
 
-        # Access properties that are stored via addon keymaps
-        # This is done in register() function
-        wm = bpy.context.window_manager
-        km = wm.keyconfigs.addon.keymaps['Object Mode']
-        mitosis_props = km.keymap_items[0].properties
+        # mitosis_props = km.keymap_items[0].properties
         mitosis_props = context.scene.mitosis_props
 
         for prop in mitosis_props.__annotations__.keys():
@@ -678,6 +684,8 @@ class OBJECT_PT_MitosisPanel(bpy.types.Panel):
                 col.prop(mitosis_props, prop, icon_only=True)
             else:
                 row.prop(mitosis_props, prop)
+        row = layout.row()
+        row.operator("object.mod_list", text="Behavior Modifiers")
         row = layout.row()
         row.operator("object.mitosis", text="Execute")
 
@@ -741,19 +749,6 @@ class MitosisProperties(bpy.types.PropertyGroup):
         items=behavior_strings,
         default='DIVIDE')
 
-    # Behavior Modifiers #
-    modifier_strings = []
-    for b in BehaviorModifiers.mods:
-        modifier_strings.append((b, b.capitalize(), ""))
-    modifier_strings = tuple(modifier_strings)
-
-    modifier: bpy.props.EnumProperty(
-        name="Behavior Modifiers",
-        description="Set pre or post replication behaviors",
-        items=modifier_strings,
-        default='ROTATE',
-        #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
-        )
 
 class OBJECT_OT_MitosisAddon(bpy.types.Operator):
     """Object Replication Animation"""
@@ -766,6 +761,10 @@ class OBJECT_OT_MitosisAddon(bpy.types.Operator):
     # registering them with Scene means values will be saved
     # to better understand: https://docs.blender.org/api/current/info_overview.html
 
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+
     def invoke(self, context, event):
         # wm = context.window_manager
         # return wm.invoke_props_dialog(self)
@@ -777,134 +776,195 @@ class OBJECT_OT_MitosisAddon(bpy.types.Operator):
         execute_func(self, context)
         return{'FINISHED'}
 
+
 def execute_func(self, context):
     # MIGHT WANT TO PASS context arg TO REPLICATOR INSTEAD OF USING BPY.CONTEXT IN ALL THE CODE ABOVE
     # SINCE SOME CODE MAY PASS CUSTOM CONTEXT TO OPERATORS
     end_scale = context.scene.mitosis_props.scale_end if context.scene.mitosis_props.use_target_scale is False else False
     custom_replicator = CustomObj_Replicator(
-        behavior=context.scene.mitosis_props.behavior, offset=context.scene.mitosis_props.offset,
+        behavior=context.scene.mitosis_props.behavior,
+        offset=context.scene.mitosis_props.offset,
         frames_to_spawn=context.scene.mitosis_props.frames_to_spawn,
-        scale_start=context.scene.mitosis_props.scale_start, scale_end=end_scale,
-        use_x=context.scene.mitosis_props.use_x, use_y=context.scene.mitosis_props.use_y, use_z=context.scene.mitosis_props.use_z)
+        scale_start=context.scene.mitosis_props.scale_start,
+        scale_end=end_scale, use_x=context.scene.mitosis_props.use_x,
+        use_y=context.scene.mitosis_props.use_y,
+        use_z=context.scene.mitosis_props.use_z)
+    custom_replicator.addBehaviorMods(get_behavior_mod_values(context))
     custom_replicator.generate(context.scene.mitosis_props.generations)
 
+def getDataPathString(modifier):
+    """Takes the selected modifier string and gets data_path string
+    Data path is stored as value in BehaviorModifiers.mods dict """
+    return BehaviorModifiers.mods[modifier]
 
-class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
-    """Object Replication Animation"""
-    bl_idname = "object.drawtest"
-    bl_label = "Mitosis Drawtest"
-    bl_options = {'REGISTER', 'UNDO'}
 
-    # Consider whether it's better to have below propertyies here,
-    # or directly register them with the Scene in register() function
-    # registering them with Scene means values will be saved
-    # to better understand: https://docs.blender.org/api/current/info_overview.html
+def get_behavior_mod_values(context):
+    """Returns dicts of mod settings formatted for use by replicators"""
+    behavior_mods = []
+    for mod in context.scene.mitosis_mod_props:
+        behavior_mods.append({
+            'data_path': getDataPathString(mod.modifier), 'value': mod.value,
+            'length': mod.duration, 'delay': False, 'index': 0
+            })
+    return behavior_mods
 
-    generations : bpy.props.IntProperty(
-        name="Generations",
-        description="Number of times replicants will divide",
-        default=1, min=1
-    )
-
-    offset : bpy.props.FloatProperty(
-        name="Spawn Offset",
-        description="End distance between replicated objects ",
-        min=0.0, default=4.0
-    )
-
-    frames_to_spawn : bpy.props.IntProperty(
-        name="Frames to Spawn",
-        description="Number of keyframes of each spawn animation",
-        min=0, default=15
-    )
-
-    use_x: bpy.props.BoolProperty(
-        name="Spawn in X Axis", default=True,
-        description="Replicants will spawn in the X Axis direction")
-    use_y: bpy.props.BoolProperty(
-        name="Spawn in Y Axis", default=True,
-        description="Replicants will spawn in the Y Axis direction")
-    use_z: bpy.props.BoolProperty(
-        name="Spawn in Z Axis", default=True,
-        description="Replicants will spawn in the Z Axis direction")
-
-    scale_start: bpy.props.FloatVectorProperty(
-        name="Starting Scale",
-        #options='HIDDEN',
-        description="Size of each spawn upon start of animation",
-        min=0.0, default=[0.2, 0.2, 0.2]
-    )
-
-    scale_end: bpy.props.FloatVectorProperty(
-        name="End Scale",
-        description="Size of each spawn at end of animation",
-        min=0.0, default=[1.0, 1.0, 1.0]
-    )
-
-    use_target_scale: bpy.props.BoolProperty(
-        name="Use Target Object Scale",
-        description="Spawned objects will be the same size as target object")
-
-    behavior_strings = []
-    for b in CustomObj_Replicator.behavior_objs.keys():
-        behavior_strings.append((b, b.capitalize(), ""))
-    behavior_strings = tuple(behavior_strings)
-
-    behavior: bpy.props.EnumProperty(
-        name="Behavior",
-        description="Determines the animation of the replication",
-        items=behavior_strings,
-        default='DIVIDE')
-
+class ModProperties(bpy.types.PropertyGroup):
+    """Properties for individual mitosis behavior modifiers.
+    """
+    behavior_mods = []  # List of dicts w/ each mod's settings
     modifier_strings = []
     for b in BehaviorModifiers.mods:
         modifier_strings.append((b, b.capitalize(), ""))
     modifier_strings = tuple(modifier_strings)
 
     modifier: bpy.props.EnumProperty(
-        name="Behavior Modifiers",
+        name="Behavior",
         description="Set pre or post replication behaviors",
         items=modifier_strings,
         default='ROTATE',
         #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
         )
+    delay: bpy.props.IntProperty(
+        name="Starting Keyframe",
+        description="Set the number of keyframes before or after the "
+                    "replication animation the behavior mod animation will "
+                    "begin",
+        min=0, default=0 # bpy.data.objects[0].mitosis_props.frames_to_spawn
+    )
 
-    def draw(self, context):
-        layout = self.layout
+    duration: bpy.props.IntProperty(
+        name="Duration (frames)",
+        description="Number of keyframes of animation",
+        min=1, default=15
+    )
 
-        col=layout.column()
-        col.label(text="asdf")
-        row = col.row()
-        row.prop(self, "generations")
+    value: bpy.props.IntProperty(
+        name="Value",
+        description="Generic Value. Ex: W/ rotation determines euler rotation "
+        "amount",
+        min=1, default=15
+    )
 
-        row = layout.row()
-        row.prop(self, "offset")
+    delete: bpy.props.BoolProperty(
+        name="-",
+        description="Delete this behavior mod",
+        default=False
+    )
 
-        row = layout.row()
-        row.prop(self, "frames_to_spawn")
+
+class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
+    """Add a behavior modifier"""
+    bl_idname = "object.behavior_mod"
+    bl_label = "New Behavior Modifier"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    #Try to call from ModProperties property group and then I can delete all these properties here
+    modifier_strings = []
+    for b in BehaviorModifiers.mods:
+        modifier_strings.append((b, b.capitalize(), ""))
+    modifier_strings = tuple(modifier_strings)
+
+    modifier: bpy.props.EnumProperty(
+        name="Behavior",
+        description="Set pre or post replication behaviors",
+        items=modifier_strings,
+        default='ROTATE',
+        #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
+        )
+    delay: bpy.props.IntProperty(
+        name="Delay (frames)",
+        description="Set the number of frames before or after replication "
+                    "animation will begin",
+        min=0, default=0 # bpy.data.objects[0].mitosis_props.frames_to_spawn
+    )
+
+    duration: bpy.props.IntProperty(
+        name="Duration (frames)",
+        description="Number of keyframes of animation",
+        min=1, default=15
+    )
+
+    value: bpy.props.IntProperty(
+        name="Value",
+        description="Generic Value. Ex: W/ rotation determines euler rotation "
+        "amount",
+        min=1, default=15
+    )
 
     def invoke(self, context, event):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 
     def execute(self, context):
-        end_scale = self.scale_end if self.use_target_scale is False else False
-        custom_replicator = CustomObj_Replicator(
-            behavior=self.behavior, offset=self.offset,
-            frames_to_spawn=self.frames_to_spawn,
-            scale_start=self.scale_start, scale_end=end_scale,
-            use_x=self.use_x, use_y=self.use_y, use_z=self.use_z)
-        custom_replicator.generate(self.generations)
+        print(self.__annotations__.keys())
+        #self.append(mod_menu_add)
+        new_mod = context.scene.mitosis_mod_props.add()
+        new_mod.modifier = self.modifier
+        new_mod.delay = self.delay
+        new_mod.duration = self.duration
+        new_mod.value = self.value
 
+        # NOTE: This clears the mod CollectionProperty and adds back elements
+        # sorted. I could not find a more direct way to sort properties
+        sort_collection_by_start_frame(context.scene.mitosis_mod_props)
+
+        print("Current Behavior Modifiers:")
+        for mod in context.scene.mitosis_mod_props:
+            print("MOD: {0}, VALUE: {1}, DURATION: {2}".format(mod.modifier, mod.value, mod.duration))
         return{'FINISHED'}
+
+
+def mod_menu_add(self, context):
+    bpy.types.Scene.bmod = bpy.props.StringProperty(
+        name="Behavior Modifiers",
+        description="My description",
+    )
+
+    layout = self.layout
+    row = layout.row(align=True)
+    row.label(text="Added Section")
+
+    #row.prop(bpy.types.Scene.bmod,  'bmod')
 
 
 def menu_func(self, context):
     self.layout.operator(OBJECT_OT_MitosisAddon.bl_idname)
 
-class OBJECT_PT_BehaviorModPanel(bpy.types.Panel):
-    bl_idname = "OBJECT_PT_behavior_mods"
-    bl_label = "Add a behavior modifier to the spawn animations"
+
+class OBJECT_OT_BehaviorModRemove(bpy.types.Operator):
+    """Delete Behavior Modifier with given index"""
+    bl_idname = "object.behavior_mod_remove"
+    bl_label = "Remove Behavior Modifier?"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    index: bpy.props.IntProperty(
+        name="Index",
+        description="Index of Behavior Mod to remove",
+        min=0, default=0
+    )
+
+    # draw func to produce confirm popup. Probably not necessary,
+    # instead executing when invoked
+    # def draw(self, context):
+    #    layout = self.layout
+    #    row = layout.row()
+    #    row.label(text="")
+
+    def invoke(self, context, event):
+        """Invoke runs execute func to delete behavior mod"""
+        return self.execute(context)
+
+    def execute(self, context):
+        """Delete behavior mod with the given index"""
+        context.scene.mitosis_mod_props.remove(self.index)
+        return{'FINISHED'}
+
+
+class OBJECT_OT_BehaviorModList(bpy.types.Operator):
+    """Displays Current behavior mods
+    """
+    bl_idname = "object.mod_list"
+    bl_label = "See and edit current behavior modifiers"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -912,14 +972,93 @@ class OBJECT_PT_BehaviorModPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
 
-        # Access properties that are stored via addon keymaps
-        # This is done in register() function
-        wm = bpy.context.window_manager
-        km = wm.keyconfigs.addon.keymaps['Object Mode']
-        mitosis_props = context.scene.mitosis_props
+        mods = context.scene.mitosis_mod_props
+        print(mods.values())
+        print("Behavior Mod list type {0}".format(type(mods)))
+
+        box = layout.box()
+
+        # Reminder: factor of split() func determine % of available space used
+        # by next column
+        col1_factor = .25
+        col2_factor = .25
+        col3_factor = .4
+        col4_factor = .6
+
+        # First Row of Titles
+        col = box.column()
+        row = col.split(factor=col1_factor)
+        row.label(text="Behavior")
+        row = row.split(factor=col2_factor)
+        row.label(text="Delay (frames)")
+        row = row.split(factor=col3_factor)
+        row.label(text="Duration")
+        row = row.split(factor=col4_factor)
+        row.label(text="Value")
+        row.label(text="delete")
+
+        i = 0
+        for mod in mods:  # Create row for each behavior mod
+            col = box.column()
+            row = col.split(factor=col1_factor)
+            row.prop(mod, "modifier", text='')
+            row = row.split(factor=col2_factor)
+            row.prop(mod, "delay", text='')
+            row = row.split(factor=col3_factor)
+            row.prop(mod, "duration", text='')
+            row = row.split(factor=col4_factor)
+            row.prop(mod, "value", text='')
+            row.operator("object.behavior_mod_remove", text="-").index = i
+            i += 1
 
         row = layout.row()
-        row.operator("object.mitosis", text="Execute")
+        row.split(factor=.1)
+        row.operator("object.behavior_mod", text="New Behavior Mod")
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self, width=400)
+
+    def execute(self, context):
+        """Execute just closes the window at this point"""
+        return{'FINISHED'}
+
+
+def sort_collection_by_start_frame(collection):
+    """Clears the given Property Collection and adds back elements sorted
+       I could not find a more direct way to sort properties
+       This only works on behavior mod collection because property attributes
+       are referred to non-dynamically in this func
+       Arguments:
+       collection -- behavior mod CollectionProperty"""
+    def copy_values(collection):
+        copied_values = []
+        for c in collection:
+            copied_values.append(
+                {'modifier': c.modifier,
+                'delay': c.delay,
+                'duration': c.duration,
+                'value': c.value
+                }
+            )
+        return copied_values
+
+    def criteria(c):
+        return c['delay']
+
+    sortdicts = copy_values(collection)
+    print("unsorted collection: {0}".format(sortdicts))
+    sortdicts.sort(key=criteria)
+    print("sorted collection: {0}".format(sortdicts))
+
+    i = 0
+    for c in sortdicts:
+        collection[i].modifier = c['modifier']
+        collection[i].delay = c['delay']
+        collection[i].duration = c['duration']
+        collection[i].value = c['value']
+        i += 1
+    return collection
 
 def mod_menu_func(self, context):
     self.layout.operator_context = 'INVOKE_DEFAULT'
@@ -954,22 +1093,15 @@ def register():
         min=0.0, default=4.0
     )
 
-    # Custom Keymaps
-    # object.mitosis Operator w/ the addon's properties is stored here
-    # because properties won't be editable in panel UI if not
-    # (they'd only be editable in popup)
-    wm = bpy.context.window_manager
-    km = wm.keyconfigs.addon.keymaps.new(name='Object Mode', space_type='EMPTY')
-    kmi = bpy.context.window_manager.keyconfigs.addon.keymaps['Object Mode'].keymap_items.new(
-        "object.mitosis", "NONE", "ANY")
-    addon_keymaps.append((km, kmi))
-
     bpy.utils.register_class(MitosisProperties)
     bpy.types.Scene.mitosis_props = bpy.props.PointerProperty(type=MitosisProperties)
-
+    bpy.utils.register_class(OBJECT_OT_BehaviorModRemove)
+    bpy.utils.register_class(ModProperties)
+    bpy.types.Scene.mitosis_mod_props = bpy.props.CollectionProperty(type=ModProperties)
     bpy.utils.register_class(OBJECT_PT_MitosisPanel)
     bpy.utils.register_class(OBJECT_OT_MitosisAddon)
     bpy.utils.register_class(OBJECT_OT_BehaviorModOp)
+    bpy.utils.register_class(OBJECT_OT_BehaviorModList)
 
     print("Panels: {0}".format(bpy.types.Panel))
     #bpy.types.OBJECT_PT_mitosis.append(add_panel_func)
@@ -979,9 +1111,12 @@ def register():
 def unregister():
     bpy.types.VIEW3D_MT_object.remove(menu_func)
 
+    bpy.utils.unregister_class(OBJECT_OT_BehaviorModList)
     bpy.utils.unregister_class(OBJECT_OT_BehaviorModOp)
     bpy.utils.unregister_class(OBJECT_OT_MitosisAddon)
     bpy.utils.unregister_class(OBJECT_PT_MitosisPanel)
+    bpy.utils.unregister_class(ModProperties)
+    bpy.utils.register_class(OBJECT_OT_BehaviorModRemove)
     bpy.utils.unregister_class(MitosisProperties)
 
     del bpy.types.Scene.string_prop_1
@@ -994,16 +1129,18 @@ if __name__ == "__main__":
 
     register()
 
-def pasas():
-    replicator1 = CustomObj_Replicator(behavior="DIVIDE",
-        offset=12, frames_to_spawn=5, scale_start=0,
-        use_x=True, use_z=False)
-    replicator1.addPostBehaviors(
-        {'data_path': 'rotation_euler', 'value': 10, 'length': 50,
-         'delay': False, 'index': 0},
-         {'data_path': 'delta_location', 'value': 50, 'length': 50,
-         'delay': False, 'index': 2})
-    replicator1.generate(10)
+    def pasas():
+        replicator1 = CustomObj_Replicator(behavior="DIVIDE",
+            offset=12, frames_to_spawn=5, scale_start=[0.2, 0.2, 0.2],
+            use_x=True, use_z=False)
+        replicator1.addBehaviorMods(
+            {'data_path': 'rotation_euler', 'value': 100, 'length': 50,
+             'delay': False, 'index': 0},
+             {'data_path': 'delta_location', 'value': 50, 'length': 50,
+             'delay': False, 'index': 2})
+        replicator1.generate(7)
+    #pasas()
 
     print("Script duration: %.4f sec" % (time.time() - time_start))
+
 
