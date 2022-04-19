@@ -96,7 +96,6 @@ class Replicant():
         assert ((len(coordinate_list) % 2) is 0
                 ), "coordinate_list must contain even number of items."
 
-        print("hide_veiwport fcurve: {0}".format(ac.fcurves.find(data_path='hide_viewport')))
         if ac.fcurves.find(data_path='hide_viewport') is None:
             fc = ac.fcurves.new(data_path='hide_viewport')
             final_cordinates = coordinate_list
@@ -136,7 +135,7 @@ class Replicant():
         for behavior in behaviors:
             BehaviorModifiers.setBehavior(
                 blender_obj=self.obj, keyframe_start=frame_current,
-                data_path=behavior['data_path'], length=behavior['length'],
+                data_path=behavior['data_path'], duration=behavior['duration'],
                 delay=behavior['delay'], value=behavior['value'],
                 index=behavior['index'])
         pass
@@ -304,7 +303,7 @@ class Replicator():
         Arguments:
 
         behavior -- String of data_path of object property
-        length -- number of keyframes to execute animation
+        duration -- number of keyframes to execute animation
         delay -- optional, # of frames to delay behavior after replication
         value -- value of change, default used if none given
         index -- index of property, default used if none given"""
@@ -320,7 +319,7 @@ class Replicator():
         """Accepts any number of dicts containing behavior modifying instructions
         Each dict should contain these keys:
         behavior -- String of data_path of object property
-        length -- number of keyframes to execute animation
+        duration -- number of keyframes to execute animation
         delay -- optional, number of frames to delay before starting animation
         value -- value of change, default used if none
         index -- index of property, default used if none"""
@@ -394,7 +393,7 @@ class AppearMixin():
         """DOESNT DO ANYTIHNG YET Deciding whether to replace above method to not repeat code w/ BehaviorModifiers"""
         BehaviorModifiers.setBehavior(
             blender_obj=self.obj, keyframe_start=frame_visible,
-            data_path='hide_viewport', length=1)
+            data_path='hide_viewport', duration=1)
 
 
 class AppearMixin_MBall(AppearMixin):
@@ -456,43 +455,52 @@ class BehaviorModifiers():
     def __init__(self, keyframe_start, keyframe_end):
         pass
 
-    def setBehavior(blender_obj, data_path, length,
-                    delay=False, value=5, index=0, keyframe_start=None):
+    def setBehavior(blender_obj, data_path, duration,
+                    delay=0, value=5, index=0, keyframe_start=None):
         """Generalized func to animate specified obj property via fcurves
         Arguments
         obj -- blender object to animate
-        behavior -- string representing data_path of obj property
+        data_path -- string representing data_path of obj property
+        duration -- integer, number of frames behavior is animated
+        delay -- integer, # of frames after replication animation will begin
+        value -- value to assign to data path
+        index -- data path index to access
+                 (ex: for rotation, determines rotation direction)
         keyframe_start -- integer, frame animation begins
-        length -- integer, number of frames behavior is animated
-        delay -- integer, # of frames after replication animation will begin"""
+        """
         # tested with the following data paths: rotation_euler, delta_location,
         # delta_scale
-        if delay:
-            keyframe_start = keyframe_start + delay
-            final_frame = keyframe_start + delay + length
-        else:
-            final_frame = keyframe_start + length
+        frame_start = keyframe_start + delay
+        final_frame = keyframe_start + delay + duration
 
-        if blender_obj.animation_data is None:
-            blender_obj.animation_data_create()
+        blender_obj.animation_data_create()
             #bpy.data.actions.new('Modifier Action')
 
         ac = blender_obj.animation_data.action
-        if ac.fcurves.find(data_path=data_path) is None:
+        if ac.fcurves.find(data_path=data_path, index=index) is None:
             fc = ac.fcurves.new(data_path=data_path, index=index)
         else:
             fc = ac.fcurves.find(data_path=data_path, index=index)
 
         # Find current value of data_path at start frame
-        bpy.context.scene.frame_current = keyframe_start
-        current_value = blender_obj.__getattribute__(data_path)[index]
+        try:
+            current_value = fc.keyframe_points.values()[-1].co[1]
+        except IndexError:
+            current_value = blender_obj.__getattribute__(data_path)[index]
 
-        fc.keyframe_points.add(2)
-        fc.keyframe_points.foreach_set(
-            'co', [keyframe_start, current_value, final_frame, value])
+        bpy.context.scene.frame_current = frame_start
+
+        #fc.keyframe_points.add(2)
+        #fc.keyframe_points.foreach_set(  # first arg attribute, second sequence
+        #    'co', [keyframe_start, current_value, final_frame, value])
+
+        #print("FC final_frame: {0}".format(frame_start))
+        fc.keyframe_points.insert(frame=frame_start, value=current_value)
+        fc.keyframe_points.insert(frame=final_frame, value=value)
+
         fc.update()
 
-    def rotate(blender_obj, length,
+    def rotate(blender_obj, duration,
                delay=False, amount=5, axis='x',
                index=None, value=None, keyframe_start=None):
         """Sets euler rotation with setBehavior(). 'axis' arg becomes index"""
@@ -500,9 +508,9 @@ class BehaviorModifiers():
         value = value if value else amount
         BehaviorModifiers.setBehavior(
             blender_obj, keyframe_start, data_path='rotation_euler',
-            length=length, delay=delay, value=value, index=index)
+            duration=duration, delay=delay, value=value, index=index)
 
-    def move(blender_obj, length, delay=False,
+    def move(blender_obj, duration, delay=False,
              amount=0, axis='x', index=None, value=None, keyframe_start=None):
         """Sets change in location as x,y,z coordinate, with setBehavior()
         Arguments:
@@ -512,10 +520,10 @@ class BehaviorModifiers():
         index = index if index else BehaviorModifiers._axisToIndex(axis)
         value = value if value else amount
         BehaviorModifiers.setBehavior(
-            blender_obj, keyframe_start, length=length,
+            blender_obj, keyframe_start, duration=duration,
             data_path="delta_location", delay=delay, value=value, index=index)
 
-    def change_scale(blender_obj, length, delay=False,
+    def change_scale(blender_obj, duration, delay=False,
                      amount=0, axis='x', index=None, value=None, keyframe_start=None):
         """Sets change in scale in x,y, or z coordinate, with setBehavior()
         Arguments:
@@ -524,7 +532,7 @@ class BehaviorModifiers():
         index = index if index else BehaviorModifiers._axisToIndex(axis)
         value = value if value else amount
         BehaviorModifiers.setBehavior(
-            blender_obj, keyframe_start, length=length,
+            blender_obj, keyframe_start, duration=duration,
             data_path="delta_scale", delay=delay, value=value, index=index)
 
     def _axisToIndex(axis_string):
@@ -540,15 +548,15 @@ class BehaviorModifiers():
         return index
 
     def setBehaviorKeyInsert(obj, behavior, behavior_func, keyframe_start,
-                             length, delay=False, **kwargs):
+                             duration, delay=False, **kwargs):
         obj.keyframe_insert(
             data_path=behavior, frame=keyframe_start)
         if delay:
             obj.keyframe_insert(
                 data_path=behavior, frame=(keyframe_start + delay))
-            final_frame = keyframe_start + delay + length
+            final_frame = keyframe_start + delay + duration
         else:
-            final_frame = keyframe_start + length
+            final_frame = keyframe_start + duration
 
         behavior_func(kwargs)
 
@@ -677,13 +685,7 @@ class OBJECT_PT_MitosisPanel(bpy.types.Panel):
             # __annotations__ used at suggestion of
             # https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
             row = layout.row()
-            if prop == "modifier":
-                row.label(text="Behavior Modifiers")
-                row = layout.row()
-                col = layout.column()
-                col.prop(mitosis_props, prop, icon_only=True)
-            else:
-                row.prop(mitosis_props, prop)
+            row.prop(mitosis_props, prop)
         row = layout.row()
         row.operator("object.mod_list", text="Behavior Modifiers")
         row = layout.row()
@@ -792,10 +794,10 @@ def execute_func(self, context):
     custom_replicator.addBehaviorMods(get_behavior_mod_values(context))
     custom_replicator.generate(context.scene.mitosis_props.generations)
 
-def getDataPathString(modifier):
-    """Takes the selected modifier string and gets data_path string
+def getDataPathString(behavior_type):
+    """Takes the selected behavior_type string and gets data_path string
     Data path is stored as value in BehaviorModifiers.mods dict """
-    return BehaviorModifiers.mods[modifier]
+    return BehaviorModifiers.mods[behavior_type]
 
 
 def get_behavior_mod_values(context):
@@ -803,46 +805,65 @@ def get_behavior_mod_values(context):
     behavior_mods = []
     for mod in context.scene.mitosis_mod_props:
         behavior_mods.append({
-            'data_path': getDataPathString(mod.modifier), 'value': mod.value,
-            'length': mod.duration, 'delay': False, 'index': 0
-            })
+            'data_path': getDataPathString(mod.behavior_type),
+            'index': int(mod.direction), 'value': mod.value,
+            'duration': mod.duration, 'delay': mod.delay
+        })
     return behavior_mods
+
+
+def behavior_type_changed(self, context):
+    """Func to call when behavior type is changed"""
+    print("Behavior Modifier Type changed"
+        "This will be used to update behavior mod UI if"
+        "different behavior types need different settings"
+        "displayed")
+
 
 class ModProperties(bpy.types.PropertyGroup):
     """Properties for individual mitosis behavior modifiers.
     """
     behavior_mods = []  # List of dicts w/ each mod's settings
-    modifier_strings = []
+    behavior_type_strings = []
     for b in BehaviorModifiers.mods:
-        modifier_strings.append((b, b.capitalize(), ""))
-    modifier_strings = tuple(modifier_strings)
+        behavior_type_strings.append((b, b.capitalize(), ""))
+    behavior_type_strings = tuple(behavior_type_strings)
 
-    modifier: bpy.props.EnumProperty(
+    behavior_type: bpy.props.EnumProperty(
         name="Behavior",
         description="Set pre or post replication behaviors",
-        items=modifier_strings,
+        items=behavior_type_strings,
         default='ROTATE',
-        #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
+        update=behavior_type_changed
+    )
+    data_path_index: bpy.props.IntProperty(
+        name="Data Path Index",
+        description="Determines index for data path of fcurve",
+        default=0,
+    )
+    direction: bpy.props.EnumProperty(
+        name="Direction",
+        description="XYZ Direction of behavior",
+        items=[('0', 'X', "X Axis", 0), ('1', 'Y', "Y Axis", 1),
+              ('2', 'Z', "Z Axis", 2)],
         )
     delay: bpy.props.IntProperty(
         name="Starting Keyframe",
         description="Set the number of keyframes before or after the "
                     "replication animation the behavior mod animation will "
                     "begin",
-        min=0, default=0 # bpy.data.objects[0].mitosis_props.frames_to_spawn
+        default=0  # bpy.data.objects[0].mitosis_props.frames_to_spawn
     )
-
     duration: bpy.props.IntProperty(
         name="Duration (frames)",
         description="Number of keyframes of animation",
         min=1, default=15
     )
-
     value: bpy.props.IntProperty(
         name="Value",
         description="Generic Value. Ex: W/ rotation determines euler rotation "
         "amount",
-        min=1, default=15
+        default=15
     )
 
     delete: bpy.props.BoolProperty(
@@ -859,23 +880,28 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     #Try to call from ModProperties property group and then I can delete all these properties here
-    modifier_strings = []
+    behavior_type_strings = []
     for b in BehaviorModifiers.mods:
-        modifier_strings.append((b, b.capitalize(), ""))
-    modifier_strings = tuple(modifier_strings)
+        behavior_type_strings.append((b, b.capitalize(), ""))
+    behavior_type_strings = tuple(behavior_type_strings)
 
-    modifier: bpy.props.EnumProperty(
+    behavior_type: bpy.props.EnumProperty(
         name="Behavior",
         description="Set pre or post replication behaviors",
-        items=modifier_strings,
+        items=behavior_type_strings,
         default='ROTATE',
         #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
         )
+    direction: bpy.props.EnumProperty(
+        name="Direction",
+        description="XYZ Direction of behavior",
+        items=[('0', 'X', "X Axis", 0), ('1', 'Y', "Y Axis", 1),
+              ('2', 'Z', "Z Axis", 2)])
     delay: bpy.props.IntProperty(
         name="Delay (frames)",
         description="Set the number of frames before or after replication "
                     "animation will begin",
-        min=0, default=0 # bpy.data.objects[0].mitosis_props.frames_to_spawn
+        default=0 # bpy.data.objects[0].mitosis_props.frames_to_spawn
     )
 
     duration: bpy.props.IntProperty(
@@ -888,7 +914,7 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
         name="Value",
         description="Generic Value. Ex: W/ rotation determines euler rotation "
         "amount",
-        min=1, default=15
+        min=-10, default=15
     )
 
     def invoke(self, context, event):
@@ -899,7 +925,8 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
         print(self.__annotations__.keys())
         #self.append(mod_menu_add)
         new_mod = context.scene.mitosis_mod_props.add()
-        new_mod.modifier = self.modifier
+        new_mod.behavior_type = self.behavior_type
+        new_mod.direction = self.direction
         new_mod.delay = self.delay
         new_mod.duration = self.duration
         new_mod.value = self.value
@@ -910,7 +937,7 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
 
         print("Current Behavior Modifiers:")
         for mod in context.scene.mitosis_mod_props:
-            print("MOD: {0}, VALUE: {1}, DURATION: {2}".format(mod.modifier, mod.value, mod.duration))
+            print("MOD: {0}, VALUE: {1}, DURATION: {2}".format(mod.behavior_type, mod.value, mod.duration))
         return{'FINISHED'}
 
 
@@ -981,19 +1008,22 @@ class OBJECT_OT_BehaviorModList(bpy.types.Operator):
         # Reminder: factor of split() func determine % of available space used
         # by next column
         col1_factor = .25
-        col2_factor = .25
-        col3_factor = .4
-        col4_factor = .6
+        col2_factor = .2
+        col3_factor = .3
+        col4_factor = .4
+        col5_factor = .6
 
         # First Row of Titles
         col = box.column()
         row = col.split(factor=col1_factor)
         row.label(text="Behavior")
         row = row.split(factor=col2_factor)
-        row.label(text="Delay (frames)")
+        row.label(text="Direction")
         row = row.split(factor=col3_factor)
-        row.label(text="Duration")
+        row.label(text="Delay (frames)")
         row = row.split(factor=col4_factor)
+        row.label(text="Duration")
+        row = row.split(factor=col5_factor)
         row.label(text="Value")
         row.label(text="delete")
 
@@ -1001,12 +1031,14 @@ class OBJECT_OT_BehaviorModList(bpy.types.Operator):
         for mod in mods:  # Create row for each behavior mod
             col = box.column()
             row = col.split(factor=col1_factor)
-            row.prop(mod, "modifier", text='')
+            row.prop(mod, "behavior_type", text='')
             row = row.split(factor=col2_factor)
-            row.prop(mod, "delay", text='')
+            row.prop(mod, "direction", text='')
             row = row.split(factor=col3_factor)
-            row.prop(mod, "duration", text='')
+            row.prop(mod, "delay", text='')
             row = row.split(factor=col4_factor)
+            row.prop(mod, "duration", text='')
+            row = row.split(factor=col5_factor)
             row.prop(mod, "value", text='')
             row.operator("object.behavior_mod_remove", text="-").index = i
             i += 1
@@ -1017,7 +1049,7 @@ class OBJECT_OT_BehaviorModList(bpy.types.Operator):
 
     def invoke(self, context, event):
         wm = context.window_manager
-        return wm.invoke_props_dialog(self, width=400)
+        return wm.invoke_props_dialog(self, width=450)
 
     def execute(self, context):
         """Execute just closes the window at this point"""
@@ -1035,7 +1067,7 @@ def sort_collection_by_start_frame(collection):
         copied_values = []
         for c in collection:
             copied_values.append(
-                {'modifier': c.modifier,
+                {'behavior_type': c.behavior_type,
                 'delay': c.delay,
                 'duration': c.duration,
                 'value': c.value
@@ -1053,7 +1085,7 @@ def sort_collection_by_start_frame(collection):
 
     i = 0
     for c in sortdicts:
-        collection[i].modifier = c['modifier']
+        collection[i].behavior_type = c['behavior_type']
         collection[i].delay = c['delay']
         collection[i].duration = c['duration']
         collection[i].value = c['value']
@@ -1134,9 +1166,9 @@ if __name__ == "__main__":
             offset=12, frames_to_spawn=5, scale_start=[0.2, 0.2, 0.2],
             use_x=True, use_z=False)
         replicator1.addBehaviorMods(
-            {'data_path': 'rotation_euler', 'value': 100, 'length': 50,
+            {'data_path': 'rotation_euler', 'value': 100, 'duration': 50,
              'delay': False, 'index': 0},
-             {'data_path': 'delta_location', 'value': 50, 'length': 50,
+             {'data_path': 'delta_location', 'value': 50, 'duration': 50,
              'delay': False, 'index': 2})
         replicator1.generate(7)
     #pasas()
