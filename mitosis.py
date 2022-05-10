@@ -142,14 +142,15 @@ class Replicant():
 
 
 class Replicator():
-    """"""
+    """
+    """
     # Describes the object's replication animation ###
     behaviors = ["DIVIDE", "SEPARATE", "APPEAR", "INFLATE", "DIVIDE_AND_MERGE"]
 
     def __init__(self, offset=4.0, frame_start=0, frames_to_spawn=15,
                  scale_start=[0, 0, 0], scale_end=[1, 1, 1],
                  start_x=0, start_y=0, start_z=0,
-                 use_x=True, use_y=True, use_z=True):
+                 use_x=True, use_y=True, use_z=True, instancing=False):
         def scaleTypeCheck(scale_list):
             if ((isinstance(scale_list, list) or (
                     isinstance(scale_list, bpy.types.bpy_prop_array) or (
@@ -166,12 +167,19 @@ class Replicator():
             else:
                 raise TypeError("Scale keyword arguments must be "
                                 "lists with 3 numbers")
+        self.instancing = instancing
         self.offset = offset
 
         self.replicants = []
         self._replicants_new = []  # stores newly replicated objects
         self.num_replicants = 0
         self.end_replicants_created = None
+
+        collection_name = self.obj_to_copy.name + ' Replicants'
+        self.collection = bpy.context.blend_data.collections.new(
+            name=collection_name)
+        bpy.context.scene.collection.children.link(self.collection)
+        print("COLLECTION: {0}".format(self.collection))
 
         self.frame_start = frame_start
         self.frames_to_spawn = frames_to_spawn
@@ -586,7 +594,7 @@ class Custom(Replicant):
             raise AttributeError("Parent Replicator must have obj_to_copy "
                                  "attribute for Custom Replicants. Original "
                                  "error:\n" + str(e))
-        C = bpy.context
+        context = bpy.context
 
         self.obj.name = parent.obj_to_copy.name + "_Replicant" \
             + str(parent.num_replicants)
@@ -595,8 +603,8 @@ class Custom(Replicant):
         self.obj.scale[0] = parent.obj_to_copy.scale[0]
         self.obj.scale[1] = parent.obj_to_copy.scale[1]
         self.obj.scale[2] = parent.obj_to_copy.scale[2]
+        parent.collection.objects.link(self.obj)
 
-        C.collection.objects.link(self.obj)
         self.obj.location = location_start
         if scale_end is False:
             scale_end = parent.obj_to_copy.scale
@@ -713,6 +721,11 @@ class MitosisProperties(bpy.types.PropertyGroup):
         min=0, default=15
     )
 
+    frame_start: bpy.props.IntProperty(
+        name="Starting Frame",
+        description="Frame Replication Animation Begins",
+        default=0)
+
     use_x: bpy.props.BoolProperty(
         name="Spawn in X Axis", default=True,
         description="Replicants will spawn in the X Axis direction")
@@ -738,7 +751,8 @@ class MitosisProperties(bpy.types.PropertyGroup):
 
     use_target_scale: bpy.props.BoolProperty(
         name="Use Target Object Scale",
-        description="Spawned objects will be the same size as target object")
+        description="Spawned objects will be the same size as target object",
+        default=True)
 
     behavior_strings = []
     for b in CustomObj_Replicator.behavior_objs.keys():
@@ -787,10 +801,12 @@ def execute_func(self, context):
         behavior=context.scene.mitosis_props.behavior,
         offset=context.scene.mitosis_props.offset,
         frames_to_spawn=context.scene.mitosis_props.frames_to_spawn,
+        frame_start=context.scene.mitosis_props.frame_start,
         scale_start=context.scene.mitosis_props.scale_start,
         scale_end=end_scale, use_x=context.scene.mitosis_props.use_x,
         use_y=context.scene.mitosis_props.use_y,
-        use_z=context.scene.mitosis_props.use_z)
+        use_z=context.scene.mitosis_props.use_z,
+        instancing=False)
     custom_replicator.addBehaviorMods(get_behavior_mod_values(context))
     custom_replicator.generate(context.scene.mitosis_props.generations)
 
