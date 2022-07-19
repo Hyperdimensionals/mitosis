@@ -175,6 +175,7 @@ class Replicator():
         self.num_replicants = 0
         self.end_replicants_created = None
 
+        # Create Collection / Folder for Replicants
         collection_name = self.obj_to_copy.name + ' Replicants'
         self.collection = bpy.context.blend_data.collections.new(
             name=collection_name)
@@ -586,9 +587,12 @@ class Custom(Replicant):
     scale_end -- Size of object after replication animation
     """
     def __init__(self, location_start, location_end, parent=False,
-                 scale_start=0, scale_end=False):
+                 scale_start=0, scale_end=False, linked=False):
         try:
-            self.obj = parent.obj_to_copy.copy()
+            if linked:
+                pass
+            else:
+                self.obj = parent.obj_to_copy.copy()
             # MAKE objects as LINKED DUPLICATES AN OPTION SO ALL REPLICANT OBJECTS ARE CHANGED WHEN EDITED
         except AttributeError as e:
             raise AttributeError("Parent Replicator must have obj_to_copy "
