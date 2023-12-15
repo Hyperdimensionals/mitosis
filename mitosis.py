@@ -3,14 +3,19 @@ bl_info = {
     "blender": (3, 1, 0),
     "category": "Object",
 }
+import sys
+#filepath = 'Users/blaise/Documents/Programming/Blender/mitosis'
+#if not filepath in sys.path:
+#    sys.path.insert(0, filepath)
 
 import bpy
-#import bpy_types
 from math import radians
 import mathutils
+import random
 
 import time  # only imported for testing purposes
 
+#from procedural_mesh_animation import get_rand_direction_vec
 
 class Replicant():
     """"""
@@ -143,6 +148,7 @@ class Replicant():
 
 class Replicator():
     """
+    Contains and controls a given replication process and its settings
     """
     # Describes the object's replication animation ###
     behaviors = ["DIVIDE", "SEPARATE", "APPEAR", "INFLATE", "DIVIDE_AND_MERGE"]
@@ -150,7 +156,7 @@ class Replicator():
     def __init__(self, offset=4.0, frame_start=0, frames_to_spawn=15,
                  scale_start=[0, 0, 0], scale_end=[1, 1, 1],
                  start_x=0, start_y=0, start_z=0,
-                 use_x=True, use_y=True, use_z=True, instancing=False):
+                 use_x=True, use_y=True, use_z=True, linked=True):
         def scaleTypeCheck(scale_list):
             if ((isinstance(scale_list, list) or (
                     isinstance(scale_list, bpy.types.bpy_prop_array) or (
@@ -167,8 +173,8 @@ class Replicator():
             else:
                 raise TypeError("Scale keyword arguments must be "
                                 "lists with 3 numbers")
-        self.instancing = instancing
         self.offset = offset
+        self.linked = linked
 
         self.replicants = []
         self._replicants_new = []  # stores newly replicated objects
@@ -197,7 +203,7 @@ class Replicator():
 
         if start_x is False:  # If this is CustomObj_Replicator
             location_start = self.obj_to_copy.location
-            first_replicant = Replicant( # First replicant is just the original object
+            first_replicant = Replicant(  # First replicant is just the original object
                 location_start, location_start, parent=self,
                 scale_start=1, scale_end=1)
             first_replicant.obj = self.obj_to_copy
@@ -250,7 +256,8 @@ class Replicator():
         replicant = self.obj_type(location_start=location_start,
                                   location_end=location_end, parent=self,
                                   scale_start=self.scale_start,
-                                  scale_end=self.scale_end)
+                                  scale_end=self.scale_end,
+                                  linked=self.linked)
         replicant.setAttributesStart(self.frame_current, self.frames_to_spawn)
         #replicant.obj.active_material.name = 
         #replicant.obj.setMaterials()
@@ -262,9 +269,11 @@ class Replicator():
 
     def spawn(self, replicant, direction=0):
         """Multiplies given replicant in the first available empty space
-        Arguments:
-        direction -- Integer representing a direction around given replicant
-        use_x, use_y, & use_z -- Set true to allow spawn in that dimension"""
+        :param replicant: Replicant Object
+        :param direction: Int, representing a direction around given replicant
+        :return spawn_location: mathutils.Vector,
+                                location of spawned replicant
+        """
         direction += 1
         # \/ Change order of these to alter replication behavior
         if (direction is 1) and (self.use_x is True):
@@ -297,14 +306,14 @@ class Replicator():
             self.spawn(replicant, direction)
 
     def locationIsEmpty(self, location_vector):
+        """ Checks if spawn location is already occupied by another replicant
+        :param location_vector: mathutils.Vector, location to check
+        :return: Bool, True if location empty"""
         for replicant in self.replicants:
             if (replicant.obj.location == location_vector) or (
                     replicant.location_end == location_vector):
                 return False
         return True
-
-    def useActiveObject(self):
-        obj_to_replicate = bpy.context.active_object
 
     def addBehaviorMod(
             self, behavior):
@@ -333,7 +342,7 @@ class Replicator():
         value -- value of change, default used if none
         index -- index of property, default used if none"""
 
-        # self.behavior_mods is cleared, Behavior Nod settings are stored in
+        # self.behavior_mods is cleared, Behavior Mod settings are stored in
         # Blender PropertyCollection (See UI section of code)
         self.behavior_mods = []
 
@@ -369,10 +378,27 @@ class Replicator():
                              "spawn behavior from the following list: " + str(
                                  self.behavior_objs.keys()))
 
+    def saveBehaviorMods(self, name="Behaviors"):
+        """Save replicator state, including behavior modifiers
+        :return: None
+        """
+        # NOT TESTED #
+        behavior_mods = []
+        try:
+            with open('behaviormods.pkl', 'rb') as input:
+                behavior_mods = pickle.load(input)
+        except FileNotFoundError as E:
+            behavior_mods = []
+
+        behavior_mods.append([name, self.behavior_mods])
+
+        with open('behaviormods.pkl', 'wb') as o:
+            pickle.dump(behavior_mods, o)
 
 ##########################
 # Behavior Mixin Methods #
 ##########################
+# For Replicant Objects
 
 class DivideMixin():
     """Replicant Methods for divide behavior
@@ -461,13 +487,13 @@ class BehaviorModifiers():
     mods = {"ROTATE": 'rotation_euler', "MOVE": 'delta_location',
             "CHANGE SCALE": 'delta_scale'}
 
-    def __init__(self, keyframe_start, keyframe_end):
-        pass
+    def __init__(self, keyframe_start, keyframe_end, behavior_mods=False):
+        self.behavior_mods = behavior_mods  # move to store behavior mod dicts here instead of in Replicator?
 
     def setBehavior(blender_obj, data_path, duration,
                     delay=0, value=5, index=0, keyframe_start=None):
         """Generalized func to animate specified obj property via fcurves
-        Arguments
+        Arguments:
         obj -- blender object to animate
         data_path -- string representing data_path of obj property
         duration -- integer, number of frames behavior is animated
@@ -532,6 +558,16 @@ class BehaviorModifiers():
             blender_obj, keyframe_start, duration=duration,
             data_path="delta_location", delay=delay, value=value, index=index)
 
+    def move_rand_direction(num_axis=2):
+        """Animates movement in random direction
+        Can randomize amount of movement as well
+        NOT IMPLEMENTED OR COMPLETED
+        :num_axis: int, number of axises to randomize on
+        """
+        if num_axis not in [0, 1, 2]:
+            raise ValueError("num_axis must be 0, 1, or 2")
+        axis = BehaviorModifiers.getRandomAxis_3()
+
     def change_scale(blender_obj, duration, delay=False,
                      amount=0, axis='x', index=None, value=None, keyframe_start=None):
         """Sets change in scale in x,y, or z coordinate, with setBehavior()
@@ -544,17 +580,34 @@ class BehaviorModifiers():
             blender_obj, keyframe_start, duration=duration,
             data_path="delta_scale", delay=delay, value=value, index=index)
 
-    def _axisToIndex(axis_string):
-        if axis_string == 'x':
-            index = 0
-        elif axis_string == 'y':
-            index = 1
-        elif axis_string == 'z':
-            index = 2
+    def _axisToIndex(axis_str):
+        axis_dict = {'x':0, 'y':1, 'z':2}
+        if (axis_str >= 0) and (axis_str <= 2):
+            return axis_str
         else:
-            raise ValueError("axis argument must be 'x', 'y', or 'z', "
-                             "corresponding to the desired axis of rotation.")
-        return index
+            try:
+                return axis_dict[axis_str]
+            except IndexError:
+                raise ValueError("axis_str argument must be 'x', 'y', or 'z', "
+                                 "corresponding to the desired axis of rotation.")
+
+    def _getRandomAxis():
+        return random.randint(0, 2)
+
+    def getRandomAxis_3(axis_1=False, axis_2=False, axis_3=False):
+        """Animates movement in random direction"""
+        if not axis_1:
+            axis_1 = BehaviorModifiers._getRandomAxis()
+        if not axis_2:
+            axis_2 = BehaviorModifiers._getRandomAxis()
+            if axis_1 is axis_2:
+                return BehaviorModifiers._getRandomAxis_3(
+                    axis_1=axis_1, axis_2=False)
+        axis_3 = BehaviorModifiers._getRandomAxis()
+        if (axis_1 is axis_3) or (axis_2 is axis_3):
+            return BehaviorModifiers._getRandomAxis_3(
+                axis_1=axis_1, axis_2=axis_2, axis_3=False)
+        return [axis_1, axis_2, axis_3]
 
     def setBehaviorKeyInsert(obj, behavior, behavior_func, keyframe_start,
                              duration, delay=False, **kwargs):
@@ -587,12 +640,10 @@ class Custom(Replicant):
     scale_end -- Size of object after replication animation
     """
     def __init__(self, location_start, location_end, parent=False,
-                 scale_start=0, scale_end=False, linked=False):
+                 scale_start=0, scale_end=False, linked=True):
         try:
-            if linked:
-                pass
-            else:
-                self.obj = parent.obj_to_copy.copy()
+            self.obj = parent.obj_to_copy.copy()
+            parent.collection.objects.link(self.obj)
             # MAKE objects as LINKED DUPLICATES AN OPTION SO ALL REPLICANT OBJECTS ARE CHANGED WHEN EDITED
         except AttributeError as e:
             raise AttributeError("Parent Replicator must have obj_to_copy "
@@ -602,12 +653,12 @@ class Custom(Replicant):
 
         self.obj.name = parent.obj_to_copy.name + "_Replicant" \
             + str(parent.num_replicants)
-        self.obj.data = parent.obj_to_copy.data.copy()
+        if not linked:  # Copying data unlinks the blender object from original
+            self.obj.data = parent.obj_to_copy.data.copy()
         self.obj.animation_data_clear()
         self.obj.scale[0] = parent.obj_to_copy.scale[0]
         self.obj.scale[1] = parent.obj_to_copy.scale[1]
         self.obj.scale[2] = parent.obj_to_copy.scale[2]
-        parent.collection.objects.link(self.obj)
 
         self.obj.location = location_start
         if scale_end is False:
@@ -643,7 +694,7 @@ class CustomObj_Replicator(Replicator):
     def __init__(self, behavior="DIVIDE", offset=4.0,
                  start_x=False, start_y=False, start_z=False,
                  frame_start=0, frames_to_spawn=15, scale_start=[.2, .2, .2],
-                 scale_end=False, **kwargs):
+                 scale_end=False, linked=True, **kwargs):
         # Assign Behavior #
         self.obj_type = self._getBehaviorObject(behavior)
         self.obj_to_copy = bpy.context.active_object
@@ -657,7 +708,7 @@ class CustomObj_Replicator(Replicator):
                             start_y=start_y, start_z=start_z,
                             frame_start=frame_start, scale_start=scale_start,
                             scale_end=scale_end,
-                            frames_to_spawn=frames_to_spawn, **kwargs)
+                            frames_to_spawn=frames_to_spawn, linked=linked, **kwargs)
 
     def copyActiveObject(active_obj):
         C = bpy.context
@@ -688,6 +739,7 @@ class OBJECT_PT_MitosisPanel(bpy.types.Panel):
         description="My description",
     )  # assigned w/ row.prop(context.scene, "mod_title")
     def draw(self, context):
+        print(self)
         layout = self.layout
 
         # mitosis_props = km.keymap_items[0].properties
@@ -696,13 +748,23 @@ class OBJECT_PT_MitosisPanel(bpy.types.Panel):
         for prop in mitosis_props.__annotations__.keys():
             # __annotations__ used at suggestion of
             # https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
-            row = layout.row()
-            row.prop(mitosis_props, prop)
+            if prop == 'use_target_scale':
+                box = layout.box()
+                col = box.column()
+                row = col.split(factor=.6)
+                row.prop(mitosis_props, prop)
+            elif prop == 'linked_data':
+                row.prop(mitosis_props, prop)
+            else:
+                row = layout.row()
+                row.prop(mitosis_props, prop)
         row = layout.row()
         row.operator("object.mod_list", text="Behavior Modifiers")
         row = layout.row()
         row.operator("object.mitosis", text="Execute")
 
+    def execute(self, context):
+        return context.window_manager.invoke_popup(self, width=300)
 
 class MitosisProperties(bpy.types.PropertyGroup):
     """User defined variables for mitosis animations.
@@ -758,6 +820,11 @@ class MitosisProperties(bpy.types.PropertyGroup):
         description="Spawned objects will be the same size as target object",
         default=True)
 
+    linked_data: bpy.props.BoolProperty(
+        name="Linked Data",
+        description="Link spawned objects data to original object",
+        default=True)
+
     behavior_strings = []
     for b in CustomObj_Replicator.behavior_objs.keys():
         behavior_strings.append((b, b.capitalize(), ""))
@@ -810,11 +877,11 @@ def execute_func(self, context):
         scale_end=end_scale, use_x=context.scene.mitosis_props.use_x,
         use_y=context.scene.mitosis_props.use_y,
         use_z=context.scene.mitosis_props.use_z,
-        instancing=False)
+        linked=context.scene.mitosis_props.linked_data)
     custom_replicator.addBehaviorMods(get_behavior_mod_values(context))
     custom_replicator.generate(context.scene.mitosis_props.generations)
 
-def getDataPathString(behavior_type):
+def get_data_path_string(behavior_type):
     """Takes the selected behavior_type string and gets data_path string
     Data path is stored as value in BehaviorModifiers.mods dict """
     return BehaviorModifiers.mods[behavior_type]
@@ -825,7 +892,7 @@ def get_behavior_mod_values(context):
     behavior_mods = []
     for mod in context.scene.mitosis_mod_props:
         behavior_mods.append({
-            'data_path': getDataPathString(mod.behavior_type),
+            'data_path': get_data_path_string(mod.behavior_type),
             'index': int(mod.direction), 'value': mod.value,
             'duration': mod.duration, 'delay': mod.delay
         })
@@ -952,12 +1019,10 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
         new_mod.value = self.value
 
         # NOTE: This clears the mod CollectionProperty and adds back elements
-        # sorted. I could not find a more direct way to sort properties
+        # sorted. I could not find a more direct way to sort properties:
         sort_collection_by_start_frame(context.scene.mitosis_mod_props)
 
-        print("Current Behavior Modifiers:")
-        for mod in context.scene.mitosis_mod_props:
-            print("MOD: {0}, VALUE: {1}, DURATION: {2}".format(mod.behavior_type, mod.value, mod.duration))
+        print_behavior_mods(context)
         return{'FINISHED'}
 
 
@@ -975,7 +1040,19 @@ def mod_menu_add(self, context):
 
 
 def menu_func(self, context):
-    self.layout.operator(OBJECT_OT_MitosisAddon.bl_idname)
+    """DOESNT WORK YET"""
+    self.layout.operator(OBJECT_PT_MitosisPanel.bl_idname)
+
+
+class MitosisMenuPopup(bpy.types.Operator):
+    """Object Replication Animation"""
+    bl_idname = "object.mitosis_popup"
+    bl_label = "Mitosis"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(bpy.types.OBJECT_PT_mitosis, width=450)
 
 
 class OBJECT_OT_BehaviorModRemove(bpy.types.Operator):
@@ -1081,8 +1158,8 @@ def sort_collection_by_start_frame(collection):
        I could not find a more direct way to sort properties
        This only works on behavior mod collection because property attributes
        are referred to non-dynamically in this func
-       Arguments:
-       collection -- behavior mod CollectionProperty"""
+       :param collection: behavior mod CollectionProperty
+       :return collection: new sorted collection """
     def copy_values(collection):
         copied_values = []
         for c in collection:
@@ -1112,23 +1189,6 @@ def sort_collection_by_start_frame(collection):
         i += 1
     return collection
 
-def mod_menu_func(self, context):
-    self.layout.operator_context = 'INVOKE_DEFAULT'
-    self.layout.operator(BehaviorModMenu.bl_idname, text="Behavior Modifier")
-
-    #def draw(self, context):
-    #    pass
-
-
-def add_panel_func(self, context):
-    """Appends to a panel"""
-    """Add to current panel"""
-    layout = self.layout
-
-    row = layout.row(align=True)
-    row.prop(context.scene, "generations")
-    #row.prop(bpy.types.object.behaviormod, "my_float")
-
 # store keymaps here to access after registration
 addon_keymaps = []
 
@@ -1151,12 +1211,11 @@ def register():
     bpy.utils.register_class(ModProperties)
     bpy.types.Scene.mitosis_mod_props = bpy.props.CollectionProperty(type=ModProperties)
     bpy.utils.register_class(OBJECT_PT_MitosisPanel)
+    bpy.utils.register_class(MitosisMenuPopup)
     bpy.utils.register_class(OBJECT_OT_MitosisAddon)
     bpy.utils.register_class(OBJECT_OT_BehaviorModOp)
     bpy.utils.register_class(OBJECT_OT_BehaviorModList)
 
-    print("Panels: {0}".format(bpy.types.Panel))
-    #bpy.types.OBJECT_PT_mitosis.append(add_panel_func)
     bpy.types.VIEW3D_MT_object.append(menu_func)
 
 
@@ -1166,6 +1225,7 @@ def unregister():
     bpy.utils.unregister_class(OBJECT_OT_BehaviorModList)
     bpy.utils.unregister_class(OBJECT_OT_BehaviorModOp)
     bpy.utils.unregister_class(OBJECT_OT_MitosisAddon)
+    bpy.utils.unregister_class(MitosisMenuPopup)
     bpy.utils.unregister_class(OBJECT_PT_MitosisPanel)
     bpy.utils.unregister_class(ModProperties)
     bpy.utils.register_class(OBJECT_OT_BehaviorModRemove)
@@ -1174,6 +1234,16 @@ def unregister():
     del bpy.types.Scene.string_prop_1
 
 
+def print_behavior_mods(context):
+    """Print a list of behavior modifiers
+    :param context: Blender context object
+    :return: None 
+    """
+    print("Current Behavior Modifiers:")
+    for mod in context.scene.mitosis_mod_props:
+        print("MOD: {0}, VALUE: {1}, DURATION: {2}".format(
+            mod.behavior_type, mod.value, mod.duration))
+
 # TO do - way to select a frame then add a generation that ends at that frame
 # To Do - Copy any object's properties and make it a replicant
 if __name__ == "__main__":
@@ -1181,17 +1251,22 @@ if __name__ == "__main__":
 
     register()
 
-    def pasas():
+    def test_behavior_mods():
+        """
+        Create Basic blender object, then add behavior mods to it and generate.
+        """
+        bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+
         replicator1 = CustomObj_Replicator(behavior="DIVIDE",
             offset=12, frames_to_spawn=5, scale_start=[0.2, 0.2, 0.2],
             use_x=True, use_z=False)
         replicator1.addBehaviorMods(
-            {'data_path': 'rotation_euler', 'value': 100, 'duration': 50,
+            [{'data_path': 'rotation_euler', 'value': 100, 'duration': 50,
              'delay': False, 'index': 0},
              {'data_path': 'delta_location', 'value': 50, 'duration': 50,
-             'delay': False, 'index': 2})
+             'delay': False, 'index': 2}])
         replicator1.generate(7)
-    #pasas()
+    #test_behavior_mods()
 
     print("Script duration: %.4f sec" % (time.time() - time_start))
 
