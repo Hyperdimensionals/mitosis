@@ -4,9 +4,6 @@ bl_info = {
     "category": "Object",
 }
 import sys
-#filepath = 'Users/blaise/Documents/Programming/Blender/mitosis'
-#if not filepath in sys.path:
-#    sys.path.insert(0, filepath)
 
 import bpy
 from math import radians
@@ -15,10 +12,9 @@ import random
 
 import time  # only imported for testing purposes
 
-#from procedural_mesh_animation import get_rand_direction_vec
-
 class Replicant():
-    """"""
+    """Represents attributes of a single replicated object.
+    """
     def __init__(self, location_start,
                  location_end, obj=False, parent=False,
                  scale_start=mathutils.Vector((0, 0, 0)),
@@ -82,49 +78,46 @@ class Replicant():
         """Add viewport visibility keyframes.
         Only run this after all other replicant properties are set
         Object is hidden when fcurve y-value is greater than or equal to 1.
-        Arguments
-        obj -- The blender object to animate
-        frame_visible -- Set frame at which the object will become visible
-        frame_hidden -- Optional argument, frame to hide object again
-                        not currently implemented"""
-        #self.obj.animation_data_create()
-        #ac = bpy.data.actions.new('Viewport Visibility')
+
+        :param frame_visible: Int, frame at which the obj will become visible
+        :param frame_hidden: Int, frame to hide object again
+                             NOT CURRENTLY IMPLEMENTED
+        :return: None"""
         frame_visible = (frame_visible - 1) if frame_visible >= 0 else 0
 
         if self.obj.animation_data is None:
             self.obj.animation_data_create()
         ac = self.obj.animation_data.action
-        frame_visible = frame_visible # + self.frames_to_spawn
+        frame_visible = frame_visible
 
         coordinate_list = [0, 1, frame_visible, 1, frame_visible + 1, 0]
         num_keyframes = int(len(coordinate_list) / 2)
         assert ((len(coordinate_list) % 2) is 0
                 ), "coordinate_list must contain even number of items."
 
-        if ac.fcurves.find(data_path='hide_viewport') is None:
-            fc = ac.fcurves.new(data_path='hide_viewport')
+        fc_hide_vp = ac.fcurves.find(data_path='hide_viewport')
+
+        if fc_hide_vp is None:
+            fc_hide_vp = ac.fcurves.new(data_path='hide_viewport')
             final_cordinates = coordinate_list
         else:
-            fc = ac.fcurves.find(data_path='hide_viewport')
-            print(fc)
             current_keyframes = []
-            for a,b in fc.keyframe_points.items():
-                print("{0} and {1} ".format(a, b.co))
+            for a, b in fc_hide_vp.keyframe_points.items():
                 current_keyframes += [b.co[0], b.co[1]]
-            print(current_keyframes)
             final_cordinates = current_keyframes + coordinate_list
-        print("keyframe points: {0}".format(len(fc.keyframe_points)))
-        fc.keyframe_points.add(num_keyframes)
-        fc.keyframe_points.foreach_set('co', final_cordinates)
+        fc_hide_vp.keyframe_points.add(num_keyframes)
+        fc_hide_vp.keyframe_points.foreach_set('co', final_cordinates)
 
-        fc.update()  # Without this, left keyframe tangents/"Bézier handles"
-                     # will extend to zero,  warping the shape of the curves
-                     # enough to lead to seemingly unpredictable changes in visibility
-        if ac.fcurves.find(data_path='hide_render') is None:
+        fc_hide_vp.update()
+        # Without fc.update(), left keyframe tangents/"Bézier handles"
+        # will extend to zero,  warping the shape of the curves
+        # enough to lead to seemingly unpredictable changes in visibility
+
+        fc_hide_render = ac.fcurves.find(data_path='hide_render')
+        if fc_hide_render is None:
             fc_hide_render = ac.fcurves.new(data_path='hide_render')
             final_cordinates = coordinate_list
         else:
-            fc_hide_render = ac.fcurves.find(data_path='hide_render')
             current_keyframes = []
             for a, b in fc_hide_render.keyframe_points.items():
                 current_keyframes += [b.co[0], b.co[1]]
@@ -150,8 +143,8 @@ class Replicator():
     """
     Contains and controls a given replication process and its settings
     """
-    # Describes the object's replication animation ###
-    behaviors = ["DIVIDE", "SEPARATE", "APPEAR", "INFLATE", "DIVIDE_AND_MERGE"]
+    # Describors of the object's replication animation ###
+    BEHAVIORS = ["DIVIDE", "SEPARATE", "APPEAR", "INFLATE", "DIVIDE_AND_MERGE"]
 
     def __init__(self, offset=4.0, frame_start=0, frames_to_spawn=15,
                  scale_start=[0, 0, 0], scale_end=[1, 1, 1],
@@ -203,14 +196,10 @@ class Replicator():
 
         if start_x is False:  # If this is CustomObj_Replicator
             location_start = self.obj_to_copy.location
-            first_replicant = Replicant(  # First replicant is just the original object
+            first_replicant = Replicant(  # First one is the original object
                 location_start, location_start, parent=self,
                 scale_start=1, scale_end=1)
             first_replicant.obj = self.obj_to_copy
-            # I'm not sure why I originally had these lines, trying to figure out
-            # error where one of the first spawn locations ends up empty
-            #first_replicant.setAttributesStart(self.frame_current, self.frames_to_spawn)
-            #first_replicant.setViewportVisAnimation(self.frame_start)
             self.replicants.append(first_replicant)
             print("Replicant list: {0}".format(self.replicants))
         else:
@@ -244,14 +233,20 @@ class Replicator():
         self._replicants_new.clear()
 
     def generate(self, generations=5):
-        """Runs Replicator for given number of generations"""
+        """Runs Replicator for given number of generations
+        :param generations: int, n of times any existing replicators will spawn
+        :return: None
+        """
         i = 0
         while i < generations:
             self.newGeneration()
             i += 1
 
     def _addReplicant(self, location_start, location_end=False):
-        """Adds a new object"""
+        """Adds a new object
+        :param location_start: mathutils.Vector, start point of added replicant
+        :param location_end: mathutils.Vector, end point of added replicant
+        :return: Replicant"""
         self.num_replicants += 1
         replicant = self.obj_type(location_start=location_start,
                                   location_end=location_end, parent=self,
@@ -259,8 +254,6 @@ class Replicator():
                                   scale_end=self.scale_end,
                                   linked=self.linked)
         replicant.setAttributesStart(self.frame_current, self.frames_to_spawn)
-        #replicant.obj.active_material.name = 
-        #replicant.obj.setMaterials()
 
         self.replicants.append(replicant)
         self._replicants_new.append(replicant)
@@ -271,9 +264,7 @@ class Replicator():
         """Multiplies given replicant in the first available empty space
         :param replicant: Replicant Object
         :param direction: Int, representing a direction around given replicant
-        :return spawn_location: mathutils.Vector,
-                                location of spawned replicant
-        """
+        :return: mathutils.Vector, location of spawned replicant"""
         direction += 1
         # \/ Change order of these to alter replication behavior
         if (direction is 1) and (self.use_x is True):
@@ -316,37 +307,36 @@ class Replicator():
         return True
 
     def addBehaviorMod(
-            self, behavior):
+            self, new_behavior):
         """Creates a behavior each replicant will perform after replicating
-        Arguments:
-
-        behavior -- String of data_path of object property
-        duration -- number of keyframes to execute animation
-        delay -- optional, # of frames to delay behavior after replication
-        value -- value of change, default used if none given
-        index -- index of property, default used if none given"""
+        :return: None"""
         assert isinstance(
-            behavior, dict), "Argument must be a dict of behavior settings"
+            new_behavior, dict), "Argument must be a dict of behavior settings"
         self._behaviorModInputCheck(  # Doesn't check everything yet
-            behavior)
+            new_behavior)
 
         self.behavior_mods.append(
-            behavior)
+            new_behavior)
 
-    def addBehaviorMods(self, behaviors):
-        """Accepts any number of dicts containing behavior modifying instructions
-        Each dict should contain these keys:
+    def addBehaviorMods(self, new_behaviors):
+        """Adds new behavior modifying instructions, from given dicts
+        Each dictionary should contain these keys:
         behavior -- String of data_path of object property
         duration -- number of keyframes to execute animation
         delay -- optional, number of frames to delay before starting animation
         value -- value of change, default used if none
-        index -- index of property, default used if none"""
+        index -- index of property, default used if none
+
+        :param new_behaviors: list of dicts, each dict contains behavior
+                              modifying instructions
+        :return: None
+        """
 
         # self.behavior_mods is cleared, Behavior Mod settings are stored in
         # Blender PropertyCollection (See UI section of code)
         self.behavior_mods = []
 
-        for behavior in behaviors:
+        for behavior in new_behaviors:
             try:
                 assert isinstance(
                     behavior, dict), "Every item in behavior list must be "
@@ -356,7 +346,7 @@ class Replicator():
                 raise ValueError("The dictionary that is index {} "
                                  "in the given behavior list is missing"
                                  " the following key: {}".format(
-                                     behaviors.index(behavior), E)
+                                     new_behaviors.index(behavior), E)
                                  )
 
     def _behaviorModInputCheck(self, behavior_dict):
@@ -370,7 +360,7 @@ class Replicator():
 
     def _getBehaviorObject(self, behavior):
         behavior = behavior.upper()
-        if (behavior in Replicator.behaviors) and (
+        if (behavior in Replicator.BEHAVIORS) and (
                 behavior in self.behavior_objs.keys()):
             return self.behavior_objs[behavior]
         else:
@@ -738,6 +728,7 @@ class OBJECT_PT_MitosisPanel(bpy.types.Panel):
         name="Behavior Modifiers",
         description="My description",
     )  # assigned w/ row.prop(context.scene, "mod_title")
+
     def draw(self, context):
         print(self)
         layout = self.layout
@@ -760,8 +751,10 @@ class OBJECT_PT_MitosisPanel(bpy.types.Panel):
                 row.prop(mitosis_props, prop)
         row = layout.row()
         row.operator("object.mod_list", text="Behavior Modifiers")
-        row = layout.row()
-        row.operator("object.mitosis", text="Execute")
+        if not isinstance(self, OBJECT_OT_MitosisPopupPanel):
+            # Refrain from drawing execute button if drawing as popup
+            row = layout.row()
+            row.operator("object.mitosis", text="Execute")
 
     def execute(self, context):
         return context.window_manager.invoke_popup(self, width=300)
@@ -1036,12 +1029,31 @@ def mod_menu_add(self, context):
     row = layout.row(align=True)
     row.label(text="Added Section")
 
-    #row.prop(bpy.types.Scene.bmod,  'bmod')
 
+class OBJECT_OT_MitosisPopupPanel(bpy.types.Operator):
+    """Mitosis Popup Menu Operator
+    Invokes popup version of OBJECT_PT_MitosisPanel.
+    Pressing 'OK' executes animation
+    """
+    bl_idname = "object.mitosispopup"
+    bl_label = "Mitosis Animation"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        """Draws panel from draw() func in OBJECT_PT_mitosis"""
+        OBJECT_PT_MitosisPanel.draw(self, context)
+
+    def execute(self, context):
+        """Runs execute function shared with OBJECT_OT_MitosisAddon"""
+        execute_func(self, context)
+        return {'FINISHED'}
 
 def menu_func(self, context):
     """DOESNT WORK YET"""
-    self.layout.operator(OBJECT_PT_MitosisPanel.bl_idname)
+    self.layout.operator(OBJECT_OT_MitosisPopupPanel.bl_idname)
 
 
 class MitosisMenuPopup(bpy.types.Operator):
@@ -1097,8 +1109,6 @@ class OBJECT_OT_BehaviorModList(bpy.types.Operator):
         layout = self.layout
 
         mods = context.scene.mitosis_mod_props
-        print(mods.values())
-        print("Behavior Mod list type {0}".format(type(mods)))
 
         box = layout.box()
 
@@ -1206,13 +1216,16 @@ def register():
     )
 
     bpy.utils.register_class(MitosisProperties)
-    bpy.types.Scene.mitosis_props = bpy.props.PointerProperty(type=MitosisProperties)
+    bpy.types.Scene.mitosis_props = bpy.props.PointerProperty(
+        type=MitosisProperties)
     bpy.utils.register_class(OBJECT_OT_BehaviorModRemove)
     bpy.utils.register_class(ModProperties)
-    bpy.types.Scene.mitosis_mod_props = bpy.props.CollectionProperty(type=ModProperties)
+    bpy.types.Scene.mitosis_mod_props = bpy.props.CollectionProperty(
+        type=ModProperties)
     bpy.utils.register_class(OBJECT_PT_MitosisPanel)
     bpy.utils.register_class(MitosisMenuPopup)
     bpy.utils.register_class(OBJECT_OT_MitosisAddon)
+    bpy.utils.register_class(OBJECT_OT_MitosisPopupPanel)
     bpy.utils.register_class(OBJECT_OT_BehaviorModOp)
     bpy.utils.register_class(OBJECT_OT_BehaviorModList)
 
@@ -1224,14 +1237,13 @@ def unregister():
 
     bpy.utils.unregister_class(OBJECT_OT_BehaviorModList)
     bpy.utils.unregister_class(OBJECT_OT_BehaviorModOp)
+    bpy.utils.unregister_class(OBJECT_OT_MitosisPopupPanel)
     bpy.utils.unregister_class(OBJECT_OT_MitosisAddon)
     bpy.utils.unregister_class(MitosisMenuPopup)
     bpy.utils.unregister_class(OBJECT_PT_MitosisPanel)
     bpy.utils.unregister_class(ModProperties)
-    bpy.utils.register_class(OBJECT_OT_BehaviorModRemove)
+    bpy.utils.unregister_class(OBJECT_OT_BehaviorModRemove)
     bpy.utils.unregister_class(MitosisProperties)
-
-    del bpy.types.Scene.string_prop_1
 
 
 def print_behavior_mods(context):
@@ -1239,10 +1251,15 @@ def print_behavior_mods(context):
     :param context: Blender context object
     :return: None 
     """
+    mods = context.scene.mitosis_mod_props
+
     print("Current Behavior Modifiers:")
-    for mod in context.scene.mitosis_mod_props:
+    for mod in mods:
         print("MOD: {0}, VALUE: {1}, DURATION: {2}".format(
             mod.behavior_type, mod.value, mod.duration))
+
+    print(mods.values())
+    print("Behavior Mod list type {0}".format(type(mods)))
 
 # TO do - way to select a frame then add a generation that ends at that frame
 # To Do - Copy any object's properties and make it a replicant
