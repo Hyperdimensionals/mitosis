@@ -1,6 +1,10 @@
 bl_info = {
     "name": "Mitosis",
+    "author": "Brendan Krueger",
+    "description": "Procedurally animate replication of objects and 'flock behavior'",
+    "version": (0, 1, 0, 0),
     "blender": (3, 1, 0),
+    "warning": "",
     "category": "Object",
 }
 import sys
@@ -764,53 +768,53 @@ class MitosisProperties(bpy.types.PropertyGroup):
     """
     generations : bpy.props.IntProperty(
         name="Generations",
-        description="Number of times replicants will divide",
+        description="Number of times replicated object will divide.",
         default=1, min=1
     )
 
     offset : bpy.props.FloatProperty(
         name="Spawn Offset",
-        description="End distance between replicated objects ",
+        description="End distance between replicated objects.",
         min=0.0, default=4.0
     )
 
     frames_to_spawn : bpy.props.IntProperty(
         name="Frames to Spawn",
-        description="Number of keyframes of each spawn animation",
+        description="Number of keyframes of each spawn animation.",
         min=0, default=15
     )
 
     frame_start: bpy.props.IntProperty(
         name="Starting Frame",
-        description="Frame Replication Animation Begins",
+        description="Frame that replication animation begins.",
         default=0)
 
     use_x: bpy.props.BoolProperty(
         name="Spawn in X Axis", default=True,
-        description="Replicants will spawn in the X Axis direction")
+        description="Spawn replicants in the X Axis direction.")
     use_y: bpy.props.BoolProperty(
         name="Spawn in Y Axis", default=True,
-        description="Replicants will spawn in the Y Axis direction")
+        description="Spawn replicants in the Y Axis direction.")
     use_z: bpy.props.BoolProperty(
         name="Spawn in Z Axis", default=True,
-        description="Replicants will spawn in the Z Axis direction")
+        description="Spawn replicants in the Z Axis direction.")
 
     scale_start: bpy.props.FloatVectorProperty(
         name="Starting Scale",
         #options='HIDDEN',
-        description="Size of each spawn upon start of animation",
+        description="Size of each spawned object upon start of animation.",
         min=0.0, default=[0.2, 0.2, 0.2]
     )
 
     scale_end: bpy.props.FloatVectorProperty(
         name="End Scale",
-        description="Size of each spawn at end of animation",
+        description="Size of each spawned object at end of animation.",
         min=0.0, default=[1.0, 1.0, 1.0]
     )
 
     use_target_scale: bpy.props.BoolProperty(
         name="Use Target Object Scale",
-        description="Spawned objects will be the same size as target object",
+        description="Make spawned objects the same size as target object",
         default=True)
 
     linked_data: bpy.props.BoolProperty(
@@ -825,7 +829,7 @@ class MitosisProperties(bpy.types.PropertyGroup):
 
     behavior: bpy.props.EnumProperty(
         name="Behavior",
-        description="Determines the animation of the replication",
+        description="Determines the type of spawn animation",
         items=behavior_strings,
         default='DIVIDE')
 
@@ -967,7 +971,7 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
 
     behavior_type: bpy.props.EnumProperty(
         name="Behavior",
-        description="Set pre or post replication behaviors",
+        description="Set pre/post spawn behaviors",
         items=behavior_type_strings,
         default='ROTATE',
         #update=bpy.ops.object.mitosis_behavior_mod('INVOKE_DEFAULT') # Call update function that opens behavior mod sub menu when mod is selected?
@@ -979,7 +983,7 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
               ('2', 'Z', "Z Axis", 2)])
     delay: bpy.props.IntProperty(
         name="Delay (frames)",
-        description="Set the number of frames before or after replication "
+        description="Set the number of frames before or after spawn that "
                     "animation will begin",
         default=0 # bpy.data.objects[0].mitosis_props.frames_to_spawn
     )
@@ -992,8 +996,8 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
 
     value: bpy.props.IntProperty(
         name="Value",
-        description="Generic Value. Ex: W/ rotation determines euler rotation "
-        "amount",
+        description="Amount of behavior. Ex: W/ rotation, determines euler"
+        " rotation amount",
         min=-10, default=15
     )
 
@@ -1003,7 +1007,6 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
 
     def execute(self, context):
         print(self.__annotations__.keys())
-        #self.append(mod_menu_add)
         new_mod = context.scene.mitosis_mod_props.add()
         new_mod.behavior_type = self.behavior_type
         new_mod.direction = self.direction
@@ -1019,21 +1022,10 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
         return{'FINISHED'}
 
 
-def mod_menu_add(self, context):
-    bpy.types.Scene.bmod = bpy.props.StringProperty(
-        name="Behavior Modifiers",
-        description="My description",
-    )
-
-    layout = self.layout
-    row = layout.row(align=True)
-    row.label(text="Added Section")
-
-
 class OBJECT_OT_MitosisPopupPanel(bpy.types.Operator):
-    """Mitosis Popup Menu Operator
-    Invokes popup version of OBJECT_PT_MitosisPanel.
-    Pressing 'OK' executes animation
+    """Mitosis Popup Menu
+    See Mitosis settings via popup.
+    Pressing 'OK' executes animation.
     """
     bl_idname = "object.mitosispopup"
     bl_label = "Mitosis Animation"
@@ -1051,8 +1043,9 @@ class OBJECT_OT_MitosisPopupPanel(bpy.types.Operator):
         execute_func(self, context)
         return {'FINISHED'}
 
-def menu_func(self, context):
-    """DOESNT WORK YET"""
+
+def add_to_obj_menu(self, context):
+    """Appends Mitosis to object menu"""
     self.layout.operator(OBJECT_OT_MitosisPopupPanel.bl_idname)
 
 
@@ -1229,11 +1222,11 @@ def register():
     bpy.utils.register_class(OBJECT_OT_BehaviorModOp)
     bpy.utils.register_class(OBJECT_OT_BehaviorModList)
 
-    bpy.types.VIEW3D_MT_object.append(menu_func)
+    bpy.types.VIEW3D_MT_object.append(add_to_obj_menu)
 
 
 def unregister():
-    bpy.types.VIEW3D_MT_object.remove(menu_func)
+    bpy.types.VIEW3D_MT_object.remove(add_to_obj_menu)
 
     bpy.utils.unregister_class(OBJECT_OT_BehaviorModList)
     bpy.utils.unregister_class(OBJECT_OT_BehaviorModOp)
