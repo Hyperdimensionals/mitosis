@@ -1,3 +1,7 @@
+# ### Mitosis Animation ###
+#
+# Copyright (c) 2024 Brendan Krueger
+
 bl_info = {
     "name": "Mitosis",
     "author": "Brendan Krueger",
@@ -222,16 +226,13 @@ class Replicator():
         # self.replicants which would cause a for loop to repeat forever
         while i < num_replicants:
             replicant = self.replicants[i]
-
             spawn_location = self.spawn(replicant)
             i += 1
         self.frame_current += self.frames_to_spawn
 
         for replicant in self._replicants_new:
             replicant.obj.scale = self.scale_end
-
             replicant.obj.location = replicant.location_end
-
             replicant.setKeyframesEnd(self.frame_current)
             replicant.setBehaviorMods(self.behavior_mods, self.frame_current)
         self._replicants_new.clear()
@@ -1045,7 +1046,7 @@ class OBJECT_OT_MitosisPopupPanel(bpy.types.Operator):
 
 
 def add_to_obj_menu(self, context):
-    """Appends Mitosis to object menu"""
+    """Appends Mitosis to object menu."""
     self.layout.operator(OBJECT_OT_MitosisPopupPanel.bl_idname)
 
 
