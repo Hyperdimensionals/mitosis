@@ -325,15 +325,13 @@ class Replicator():
 
     def addBehaviorMods(self, new_behaviors):
         """Adds new behavior modifying instructions, from given dicts
-        Each dictionary should contain these keys:
-        behavior -- String of data_path of object property
-        duration -- number of keyframes to execute animation
-        delay -- optional, number of frames to delay before starting animation
-        value -- value of change, default used if none
-        index -- index of property, default used if none
-
-        :param new_behaviors: list of dicts, each dict contains behavior
-                              modifying instructions
+        :param new_behaviors: list of dicts, each contains settings for a behavior modifier
+            Each dictionary should contain these keys:
+            behavior -- string, data_path of object property
+            duration -- int, number of keyframes to execute animation
+            delay -- int, optional, number of frames to delay before starting animation
+            value -- int, value of change, default used if none
+            index -- index of property, default used if none
         :return: None
         """
 

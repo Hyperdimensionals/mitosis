@@ -1,3 +1,15 @@
+# ### Mitosis Integration Tests ###
+#
+# These integration tests are to be exectuted within a blender project.
+# blender_projects/mitosis_integration_tests.blend is provided as a default, 
+# pre-loaded pointing to this script.
+#
+# Currently, these tests simply execute test animations within Blender so basic
+# proper functioning can be confirmed.
+#
+# These tests do not yet evaluate the results of code on a deeper quantitative
+# level.
+
 import bpy
 from random import choice
 import mathutils
@@ -69,7 +81,7 @@ def get_distance_between_replicators(spawn_offset, num_generations):
     return distance
 
 
-def add_text_title(location=(0, 0, 0), display_text="No Given Text"):
+def add_text_title(location=(0, 0, 0), display_text="Test"):
     bpy.ops.object.text_add(location=location)
     text_obj = bpy.context.active_object
     text_obj.data.body = display_text
