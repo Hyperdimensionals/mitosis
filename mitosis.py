@@ -21,7 +21,7 @@ import random
 import time  # only imported for testing purposes
 
 class Replicant():
-    """Represents attributes of a single replicated object.
+    """Represents attributes and controls for a single replicated object.
     """
     def __init__(self, location_start,
                  location_end, obj=False, parent=False,
@@ -149,7 +149,7 @@ class Replicant():
 
 class Replicator():
     """
-    Contains and controls a given replication process and its settings
+    Controls a given replication process and contains its settings
     """
     # Describors of the object's replication animation ###
     BEHAVIORS = ["DIVIDE", "SEPARATE", "APPEAR", "INFLATE", "DIVIDE_AND_MERGE"]
@@ -267,6 +267,8 @@ class Replicator():
 
     def spawn(self, replicant, direction=0):
         """Multiplies given replicant in the first available empty space
+        Empty means spot is free from other replicants owned by this Replicator
+        This doesn't check if space is empty from any other objects
         :param replicant: Replicant Object
         :param direction: Int, representing a direction around given replicant
         :return: mathutils.Vector, location of spawned replicant"""
@@ -334,7 +336,6 @@ class Replicator():
             index -- index of property, default used if none
         :return: None
         """
-
         # self.behavior_mods is cleared, Behavior Mod settings are stored in
         # Blender PropertyCollection (See UI section of code)
         self.behavior_mods = []
@@ -527,6 +528,10 @@ class BehaviorModifiers():
         fc.keyframe_points.insert(frame=final_frame, value=value)
 
         fc.update()
+
+    ### Specific Behavior Functions ###
+    # These are works in progress, not currently used, & may not be functional
+    # Currently unsure if it's a useful direction at the moment.
 
     def rotate(blender_obj, duration,
                delay=False, amount=5, axis='x',
@@ -997,7 +1002,7 @@ class OBJECT_OT_BehaviorModOp(bpy.types.Operator):
         name="Value",
         description="Amount of behavior. Ex: W/ rotation, determines euler"
         " rotation amount",
-        min=-10, default=15
+        default=15
     )
 
     def invoke(self, context, event):

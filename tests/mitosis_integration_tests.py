@@ -89,30 +89,44 @@ def add_text_title(location=(0, 0, 0), display_text="Test"):
     text_obj.data.size = 10.0
     text_obj.name = display_text
 
-def test_behavior_mods():
+def test_behavior_mods(
+        behaviors="DIVIDE", spawn_offset=12, frames_to_spawn=5, 
+        scale_start=[0.2, 0.2, 0.2], num_generations=6,
+        location=mathutils.Vector((0, 200, 0))
+    ):
     """
     Create Basic blender object, then add behavior mods to it and generate.
     :return: None
     """
-    bpy.ops.mesh.primitive_cube_add(location=(0, 200, 0))
+    add_random_obj_type(location)
 
-    replicator1 = CustomObj_Replicator(behavior="DIVIDE",
-        offset=12, frames_to_spawn=5, scale_start=[0.2, 0.2, 0.2],
-        use_x=True, use_z=False)
+    replicator1 = CustomObj_Replicator(
+        behavior=behaviors, offset=spawn_offset, frames_to_spawn=frames_to_spawn,
+        scale_start=scale_start, use_x=True, use_z=False
+        )
     replicator1.addBehaviorMods(
         [{'data_path': 'rotation_euler', 'value': 100, 'duration': 50,
          'delay': False, 'index': 0},
          {'data_path': 'delta_location', 'value': 50, 'duration': 50,
          'delay': False, 'index': 2}])
 
-    replicator1.generate(7)
+    replicator1.generate(num_generations)
 
+    distance_int = get_distance_between_replicators(
+        spawn_offset=spawn_offset, num_generations=num_generations)
+
+    display_text = "Behaviors Modified: "
+    for mod in replicator1.behavior_mods:
+        display_text = display_text + mod['data_path'] + ", "
+
+    add_text_title(location=location + mathutils.Vector((0, -distance_int, 0)),
+                    display_text=display_text)
 
 if __name__ == "__main__":
     time_start = time.time()
-
+    current_location = 0
     ### Basic Replication Behavior Tests ###
-    test_basic_spawn_behaviors(
+    current_location = test_basic_spawn_behaviors(
         behaviors=["DIVIDE", "INFLATE", "APPEAR"]
     )
 
