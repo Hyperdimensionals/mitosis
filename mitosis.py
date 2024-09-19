@@ -1259,28 +1259,11 @@ def print_behavior_mods(context):
     print("Behavior Mod list type {0}".format(type(mods)))
 
 # TO do - way to select a frame then add a generation that ends at that frame
-# To Do - Copy any object's properties and make it a replicant
+
 if __name__ == "__main__":
     time_start = time.time()
 
     register()
-
-    def test_behavior_mods():
-        """
-        Create Basic blender object, then add behavior mods to it and generate.
-        """
-        bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
-
-        replicator1 = CustomObj_Replicator(behavior="DIVIDE",
-            offset=12, frames_to_spawn=5, scale_start=[0.2, 0.2, 0.2],
-            use_x=True, use_z=False)
-        replicator1.addBehaviorMods(
-            [{'data_path': 'rotation_euler', 'value': 100, 'duration': 50,
-             'delay': False, 'index': 0},
-             {'data_path': 'delta_location', 'value': 50, 'duration': 50,
-             'delay': False, 'index': 2}])
-        replicator1.generate(7)
-    #test_behavior_mods()
 
     print("Script duration: %.4f sec" % (time.time() - time_start))
 
